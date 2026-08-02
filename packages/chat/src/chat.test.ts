@@ -23,6 +23,7 @@ import { Modal, type ModalElement, TextInput } from "./modals";
 import type {
   ActionEvent,
   Adapter,
+  MentionHandler,
   ModalSubmitEvent,
   ReactionEvent,
   StateAdapter,
@@ -3453,6 +3454,384 @@ describe("Chat", () => {
   });
 
   describe("concurrency: queue", () => {
+    it("should process a queued webhook in its own background lifetime", async () => {
+      const state = createMockState();
+      const ownerAdapter = createMockAdapter("slack");
+      const queuedAdapter = createMockAdapter("slack");
+      const latestAdapter = createMockAdapter("slack");
+      const threadId = "slack:C123:queued-lifetime";
+
+      const ownerChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: ownerAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+      const queuedChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: queuedAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+      const latestChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: latestAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+
+      await Promise.all([
+        ownerChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+        queuedChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+        latestChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+      ]);
+
+      let releaseOwner = () => {
+        throw new Error("releaseOwner not assigned");
+      };
+      let notifyOwnerStarted = () => {
+        throw new Error("notifyOwnerStarted not assigned");
+      };
+      const ownerStarted = new Promise<void>((resolve) => {
+        notifyOwnerStarted = resolve;
+      });
+      const ownerBlocked = new Promise<void>((resolve) => {
+        releaseOwner = resolve;
+      });
+      let ownerLifetimeActive = true;
+      const ownerMessages: string[] = [];
+      const claimedMessages: Array<{
+        id: string;
+        skipped: string[];
+        totalSinceLastHandler: number | undefined;
+      }> = [];
+
+      vi.mocked(ownerAdapter.postMessage).mockImplementation(async () => {
+        if (!ownerLifetimeActive) {
+          throw new Error("owner background lifetime expired");
+        }
+        return { id: "owner-delivery", threadId, raw: {} };
+      });
+
+      ownerChat.onNewMention(async (thread, message) => {
+        ownerMessages.push(message.id);
+        if (message.id === "msg-owner") {
+          notifyOwnerStarted();
+          await ownerBlocked;
+          return;
+        }
+        await thread.post("final response");
+      });
+      const queuedHandler: MentionHandler = async (
+        thread,
+        message,
+        context
+      ) => {
+        expect(ownerLifetimeActive).toBe(false);
+        claimedMessages.push({
+          id: message.id,
+          skipped: context?.skipped.map((skipped) => skipped.id) ?? [],
+          totalSinceLastHandler: context?.totalSinceLastHandler,
+        });
+        await thread.post("final response");
+      };
+      queuedChat.onNewMention(queuedHandler);
+      latestChat.onNewMention(queuedHandler);
+
+      const ownerBackgroundTasks: Promise<unknown>[] = [];
+      const queuedBackgroundTasks: Promise<unknown>[] = [];
+      const latestBackgroundTasks: Promise<unknown>[] = [];
+      const ownerTask = ownerChat.processMessage(
+        ownerAdapter,
+        threadId,
+        createTestMessage("msg-owner", "Hey @slack-bot first"),
+        { waitUntil: (task) => ownerBackgroundTasks.push(task) }
+      );
+      await ownerStarted;
+
+      const queuedTask = queuedChat.processMessage(
+        queuedAdapter,
+        threadId,
+        createTestMessage("msg-queued", "Hey @slack-bot second"),
+        { waitUntil: (task) => queuedBackgroundTasks.push(task) }
+      );
+      const latestTask = latestChat.processMessage(
+        latestAdapter,
+        threadId,
+        createTestMessage("msg-latest", "Hey @slack-bot third"),
+        { waitUntil: (task) => latestBackgroundTasks.push(task) }
+      );
+      await vi.waitFor(async () => {
+        expect(await state.queueDepth(threadId)).toBe(2);
+      });
+      expect(queuedBackgroundTasks).toHaveLength(1);
+      expect(latestBackgroundTasks).toHaveLength(1);
+      let queuedLifetimeSettled = false;
+      const queuedLifetime = Promise.all([
+        queuedBackgroundTasks[0],
+        latestBackgroundTasks[0],
+      ]).then(() => {
+        queuedLifetimeSettled = true;
+      });
+
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(queuedLifetimeSettled).toBe(false);
+      } finally {
+        ownerLifetimeActive = false;
+        releaseOwner();
+        await Promise.allSettled([
+          ownerTask,
+          queuedTask,
+          latestTask,
+          ...ownerBackgroundTasks,
+          queuedLifetime,
+        ]);
+      }
+
+      expect(ownerMessages).toEqual(["msg-owner"]);
+      expect(claimedMessages).toEqual([
+        {
+          id: "msg-latest",
+          skipped: ["msg-queued"],
+          totalSinceLastHandler: 2,
+        },
+      ]);
+      expect(queuedLifetimeSettled).toBe(true);
+      expect(ownerAdapter.postMessage).not.toHaveBeenCalled();
+      expect(
+        vi.mocked(queuedAdapter.postMessage).mock.calls.length +
+          vi.mocked(latestAdapter.postMessage).mock.calls.length
+      ).toBe(1);
+    });
+
+    it("should collapse an existing queue before a fresh webhook can overtake it", async () => {
+      const state = createMockState();
+      const queuedAdapter = createMockAdapter("slack");
+      const freshAdapter = createMockAdapter("slack");
+      const threadId = "slack:C123:queue-order";
+      const config = {
+        strategy: "queue" as const,
+        maxQueueSize: 1,
+        onQueueFull: "drop-newest" as const,
+      };
+      const queuedChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: queuedAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: config,
+      });
+      const freshChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: freshAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: config,
+      });
+
+      await Promise.all([
+        queuedChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+        freshChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+      ]);
+
+      const received: Array<{ id: string; skipped: string[] }> = [];
+      const handler: MentionHandler = async (_thread, message, context) => {
+        received.push({
+          id: message.id,
+          skipped: context?.skipped.map((skipped) => skipped.id) ?? [],
+        });
+      };
+      queuedChat.onNewMention(handler);
+      freshChat.onNewMention(handler);
+
+      const externalLock = await state.acquireLock(threadId, 30_000);
+      if (!externalLock) {
+        throw new Error("expected external lock");
+      }
+      const queuedTask = queuedChat.processMessage(
+        queuedAdapter,
+        threadId,
+        createTestMessage("msg-waiting", "Hey @slack-bot waiting")
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(await state.queueDepth(threadId)).toBe(1);
+
+      await state.releaseLock(externalLock);
+      const freshTask = freshChat.processMessage(
+        freshAdapter,
+        threadId,
+        createTestMessage("msg-fresh", "Hey @slack-bot fresh")
+      );
+      await Promise.all([queuedTask, freshTask]);
+
+      expect(received).toEqual([{ id: "msg-fresh", skipped: ["msg-waiting"] }]);
+    });
+
+    it("should omit queued context for an idle webhook", async () => {
+      const state = createMockState();
+      const adapter = createMockAdapter("slack");
+      const queueChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: adapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+      await queueChat.webhooks.slack(
+        new Request("http://test.com", { method: "POST" })
+      );
+
+      const contexts: Parameters<MentionHandler>[2][] = [];
+      queueChat.onNewMention(async (_thread, _message, context) => {
+        contexts.push(context);
+      });
+
+      await queueChat.processMessage(
+        adapter,
+        "slack:C123:idle-context",
+        createTestMessage("msg-idle", "Hey @slack-bot idle")
+      );
+
+      expect(contexts).toEqual([undefined]);
+    });
+
+    it("should release a claimed batch to messages from newer webhooks", async () => {
+      const state = createMockState();
+      const firstAdapter = createMockAdapter("slack");
+      const nextAdapter = createMockAdapter("slack");
+      const threadId = "slack:C123:claimed-batch";
+      const firstChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: firstAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+      const nextChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: nextAdapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+
+      await Promise.all([
+        firstChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+        nextChat.webhooks.slack(
+          new Request("http://test.com", { method: "POST" })
+        ),
+      ]);
+
+      let releaseFirstHandler = () => {
+        throw new Error("releaseFirstHandler not assigned");
+      };
+      let notifyFirstHandlerStarted = () => {
+        throw new Error("notifyFirstHandlerStarted not assigned");
+      };
+      const firstHandlerStarted = new Promise<void>((resolve) => {
+        notifyFirstHandlerStarted = resolve;
+      });
+      const firstHandlerBlocked = new Promise<void>((resolve) => {
+        releaseFirstHandler = resolve;
+      });
+      const firstMessages: string[] = [];
+      const nextMessages: string[] = [];
+
+      firstChat.onNewMention(async (_thread, message) => {
+        firstMessages.push(message.id);
+        notifyFirstHandlerStarted();
+        await firstHandlerBlocked;
+      });
+      nextChat.onNewMention(async (_thread, message) => {
+        nextMessages.push(message.id);
+      });
+
+      await state.acquireLock(threadId, 30_000);
+      const firstTask = firstChat.processMessage(
+        firstAdapter,
+        threadId,
+        createTestMessage("msg-first-claim", "Hey @slack-bot first")
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(await state.queueDepth(threadId)).toBe(1);
+
+      await state.forceReleaseLock(threadId);
+      await firstHandlerStarted;
+      const nextTask = nextChat.processMessage(
+        nextAdapter,
+        threadId,
+        createTestMessage("msg-next-claim", "Hey @slack-bot next")
+      );
+
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(await state.queueDepth(threadId)).toBe(1);
+      } finally {
+        releaseFirstHandler();
+        await Promise.allSettled([firstTask, nextTask]);
+      }
+
+      expect(firstMessages).toEqual(["msg-first-claim"]);
+      expect(nextMessages).toEqual(["msg-next-claim"]);
+    });
+
+    it("should preserve the handler error when writing claim markers fails", async () => {
+      const state = createMockState();
+      const adapter = createMockAdapter("slack");
+      const threadId = "slack:C123:claim-marker-failure";
+      const queueChat = new Chat({
+        userName: "testbot",
+        adapters: { slack: adapter },
+        state,
+        logger: mockLogger,
+        concurrency: "queue",
+      });
+      await queueChat.webhooks.slack(
+        new Request("http://test.com", { method: "POST" })
+      );
+
+      const handler = vi
+        .fn()
+        .mockRejectedValue(new Error("queued handler failed"));
+      queueChat.onNewMention(handler);
+
+      const externalLock = await state.acquireLock(threadId, 30_000);
+      if (!externalLock) {
+        throw new Error("expected external lock");
+      }
+      const task = queueChat.processMessage(
+        adapter,
+        threadId,
+        createTestMessage("msg-claim-marker", "Hey @slack-bot queued")
+      );
+      await vi.waitFor(async () => {
+        expect(await state.queueDepth(threadId)).toBe(1);
+      });
+      vi.mocked(state.set).mockRejectedValueOnce(
+        new Error("claim marker unavailable")
+      );
+
+      await state.releaseLock(externalLock);
+      await expect(task).rejects.toThrow("queued handler failed");
+      expect(handler).toHaveBeenCalledOnce();
+    });
+
     it("should process queued messages with skipped context after handler finishes", async () => {
       const state = createMockState();
       const adapter = createMockAdapter("slack");

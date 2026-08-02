@@ -26,7 +26,7 @@ const bot = new Chat({
 
 ### Queue
 
-Messages that arrive while a handler is running are enqueued. When the current handler finishes, only the **latest** queued message is dispatched. All intermediate messages are provided as `context.skipped`, giving your handler full visibility into what happened while it was busy.
+Messages that arrive while a handler is running are enqueued. Each webhook keeps its own background task waiting to claim the lock instead of attaching queued work to the earlier webhook's lifetime. When a queued webhook claims the lock, only the **latest** queued message is dispatched. All intermediate messages are provided as `context.skipped`, giving your handler full visibility into what happened while it was busy.
 
 ```typescript title="lib/bot.ts" lineNumbers
 const bot = new Chat({
@@ -50,12 +50,16 @@ bot.onNewMention(async (thread, message, context) => {
 
 ```
 A arrives  → acquire lock → process A
-B arrives  → lock busy → enqueue B
-C arrives  → lock busy → enqueue C
-D arrives  → lock busy → enqueue D
-A done     → drain: [B, C, D] → handler(D, { skipped: [B, C] })
-D done     → queue empty → release lock
+B arrives  → lock busy → enqueue B → wait to claim
+C arrives  → lock busy → enqueue C → wait to claim
+D arrives  → lock busy → enqueue D → wait to claim
+A done     → release lock
+B/C/D      → one webhook claims lock
+           → drain: [B, C, D] → handler(D, { skipped: [B, C] })
+D done     → release lock; remaining webhook tasks see their batch was claimed
 ```
+
+Messages that arrive while the claimed handler runs form the next queued batch. A live webhook task claims the lock after the current batch releases it, so the current request does not pull newer work into its own lifetime. Hosts may still terminate background tasks before `queueEntryTtlMs`; handlers must release the lock while at least one later webhook's execution lease remains live.
 
 ### Burst
 

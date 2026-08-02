@@ -73,6 +73,12 @@ import type {
 import { ChatError, ConsoleLogger, LockError } from "./types";
 
 const DEFAULT_LOCK_TTL_MS = 30_000; // 30 seconds
+const QUEUE_LOCK_RETRY_INITIAL_MS = 25;
+const QUEUE_LOCK_RETRY_MAX_MS = 1000;
+
+type QueueLifecycle = "drain" | "request-claim";
+type QueueDrainMode = "continuous" | "single-batch";
+type QueueEnqueueMode = "lock-owner" | "pending";
 
 /** Promise-based sleep for debounce timing. */
 function sleep(ms: number): Promise<void> {
@@ -937,7 +943,9 @@ export class Chat<
         typeof messageOrFactory === "function"
           ? await messageOrFactory()
           : messageOrFactory;
-      await this.handleIncomingMessage(adapter, threadId, message);
+      await runInConversation(threadId, () =>
+        this.routeIncomingMessage(adapter, threadId, message, "request-claim")
+      );
     })();
 
     // Track via waitUntil with errors swallowed (existing webhook semantics —
@@ -2038,7 +2046,8 @@ export class Chat<
   private async routeIncomingMessage(
     adapter: Adapter,
     threadId: string,
-    message: Message
+    message: Message,
+    queueLifecycle: QueueLifecycle = "drain"
   ): Promise<void> {
     setMessageAdapter(message, adapter);
 
@@ -2112,7 +2121,8 @@ export class Chat<
         threadId,
         lockKey,
         message,
-        strategy
+        strategy,
+        queueLifecycle
       );
       return;
     }
@@ -2176,17 +2186,16 @@ export class Chat<
     }
   }
 
-  /**
-   * Queue/Debounce strategy: enqueue if lock is busy, drain after processing.
-   */
+  /** Queue/Debounce strategy: enqueue if the lock is busy. */
   private async handleQueueOrDebounce(
     adapter: Adapter,
     threadId: string,
     lockKey: string,
     message: Message,
-    strategy: "queue" | "debounce" | "burst"
+    strategy: "queue" | "debounce" | "burst",
+    queueLifecycle: QueueLifecycle
   ): Promise<void> {
-    const { maxQueueSize, queueEntryTtlMs, onQueueFull, debounceMs } =
+    const { maxQueueSize, queueEntryTtlMs, debounceMs } =
       this._concurrencyConfig;
 
     // Try to acquire lock
@@ -2196,43 +2205,25 @@ export class Chat<
     );
 
     if (!lock) {
-      // Lock is busy — enqueue this message for later processing
-      const effectiveMaxSize = maxQueueSize;
-      const depth = await this._stateAdapter.queueDepth(lockKey);
-
-      if (
-        depth >= effectiveMaxSize &&
-        strategy !== "debounce" &&
-        onQueueFull === "drop-newest"
-      ) {
-        this.logger.info("message-dropped", {
-          threadId,
-          lockKey,
-          messageId: message.id,
-          reason: "queue-full",
-        });
-        return;
-      }
-
-      await this._stateAdapter.enqueue(
+      const expiresAt = await this.enqueueMessage(
+        threadId,
         lockKey,
-        {
-          message,
-          enqueuedAt: Date.now(),
-          expiresAt: Date.now() + queueEntryTtlMs,
-        },
-        effectiveMaxSize
+        message,
+        strategy
       );
-
-      this.logger.info(
-        strategy === "debounce" ? "message-debounce-reset" : "message-queued",
-        {
+      if (
+        expiresAt !== null &&
+        strategy === "queue" &&
+        queueLifecycle === "request-claim"
+      ) {
+        await this.claimQueuedMessages(
+          adapter,
           threadId,
           lockKey,
-          messageId: message.id,
-          queueDepth: Math.min(depth + 1, effectiveMaxSize),
-        }
-      );
+          message.id,
+          expiresAt
+        );
+      }
       return;
     }
 
@@ -2281,15 +2272,133 @@ export class Chat<
         await sleep(debounceMs);
         await this._stateAdapter.extendLock(lock, DEFAULT_LOCK_TTL_MS);
         await this.drainQueue(lock, adapter, threadId, lockKey);
+      } else if (
+        queueLifecycle === "request-claim" &&
+        (await this._stateAdapter.queueDepth(lockKey)) > 0
+      ) {
+        await this.enqueueMessage(
+          threadId,
+          lockKey,
+          message,
+          strategy,
+          "lock-owner"
+        );
+        await this.drainQueue(lock, adapter, threadId, lockKey, "single-batch");
       } else {
-        // Queue: process our message immediately, then drain any queued messages
         await this.dispatchToHandlers(adapter, threadId, message);
-        await this.drainQueue(lock, adapter, threadId, lockKey);
+        if (queueLifecycle === "drain") {
+          await this.drainQueue(lock, adapter, threadId, lockKey);
+        }
       }
     } finally {
       await this._stateAdapter.releaseLock(lock);
       this.logger.debug("Lock released", { threadId, lockKey });
     }
+  }
+
+  private async enqueueMessage(
+    threadId: string,
+    lockKey: string,
+    message: Message,
+    strategy: "queue" | "debounce" | "burst",
+    mode: QueueEnqueueMode = "pending"
+  ): Promise<number | null> {
+    const { maxQueueSize, queueEntryTtlMs, onQueueFull } =
+      this._concurrencyConfig;
+    const depth = await this._stateAdapter.queueDepth(lockKey);
+
+    if (
+      mode === "pending" &&
+      depth >= maxQueueSize &&
+      strategy !== "debounce" &&
+      onQueueFull === "drop-newest"
+    ) {
+      this.logger.info("message-dropped", {
+        threadId,
+        lockKey,
+        messageId: message.id,
+        reason: "queue-full",
+      });
+      return null;
+    }
+
+    const expiresAt = Date.now() + queueEntryTtlMs;
+    const capacity = mode === "lock-owner" ? maxQueueSize + 1 : maxQueueSize;
+    await this._stateAdapter.enqueue(
+      lockKey,
+      { message, enqueuedAt: Date.now(), expiresAt },
+      capacity
+    );
+
+    this.logger.info(
+      strategy === "debounce" ? "message-debounce-reset" : "message-queued",
+      {
+        threadId,
+        lockKey,
+        messageId: message.id,
+        queueDepth: Math.min(depth + 1, capacity),
+      }
+    );
+    return expiresAt;
+  }
+
+  private async claimQueuedMessages(
+    adapter: Adapter,
+    threadId: string,
+    lockKey: string,
+    messageId: string,
+    expiresAt: number
+  ): Promise<void> {
+    let retryMs = QUEUE_LOCK_RETRY_INITIAL_MS;
+    const claimKey = this.queueClaimKey(adapter, lockKey, messageId);
+
+    while (Date.now() <= expiresAt) {
+      if (await this._stateAdapter.get(claimKey)) {
+        return;
+      }
+
+      const lock = await this._stateAdapter.acquireLock(
+        lockKey,
+        DEFAULT_LOCK_TTL_MS
+      );
+      if (lock) {
+        try {
+          if (await this._stateAdapter.get(claimKey)) {
+            return;
+          }
+          await this.drainQueue(
+            lock,
+            adapter,
+            threadId,
+            lockKey,
+            "single-batch"
+          );
+        } finally {
+          await this._stateAdapter.releaseLock(lock);
+          this.logger.debug("Lock released", { threadId, lockKey });
+        }
+        return;
+      }
+
+      if ((await this._stateAdapter.queueDepth(lockKey)) === 0) {
+        return;
+      }
+
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs <= 0) {
+        return;
+      }
+      await sleep(Math.min(retryMs, remainingMs));
+      retryMs = Math.min(retryMs * 2, QUEUE_LOCK_RETRY_MAX_MS);
+    }
+  }
+
+  private queueClaimKey(
+    adapter: Adapter,
+    lockKey: string,
+    messageId: string
+  ): string {
+    return `chat:queue-claim:${adapter.name}:${lockKey}:${messageId}`;
   }
 
   /**
@@ -2373,16 +2482,19 @@ export class Chat<
     lock: Lock,
     adapter: Adapter,
     threadId: string,
-    lockKey: string
+    lockKey: string,
+    mode: QueueDrainMode = "continuous"
   ): Promise<void> {
     while (true) {
       // Collect all pending messages, rehydrating after JSON roundtrip
       const pending: Array<{ message: Message; expiresAt: number }> = [];
+      const claimedMessageIds: string[] = [];
       while (true) {
         const entry = await this._stateAdapter.dequeue(lockKey);
         if (!entry) {
           break;
         }
+        claimedMessageIds.push(entry.message.id);
         const msg = this.rehydrateMessage(entry.message, adapter);
         if (Date.now() <= entry.expiresAt) {
           pending.push({ message: msg, expiresAt: entry.expiresAt });
@@ -2395,37 +2507,66 @@ export class Chat<
         }
       }
 
-      if (pending.length === 0) {
-        return;
+      try {
+        if (pending.length === 0) {
+          return;
+        }
+
+        await this._stateAdapter.extendLock(lock, DEFAULT_LOCK_TTL_MS);
+
+        // Latest message is the one we process
+        const latest = pending.at(-1);
+        if (!latest) {
+          return;
+        }
+        // Everything before it is "skipped" context
+        const skipped = pending.slice(0, -1).map((e) => e.message);
+
+        this.logger.info("message-dequeued", {
+          threadId,
+          lockKey,
+          messageId: latest.message.id,
+          skippedCount: skipped.length,
+          totalSinceLastHandler: pending.length,
+        });
+
+        const context: MessageContext = {
+          skipped,
+          totalSinceLastHandler: pending.length,
+        };
+
+        await this.dispatchToHandlers(
+          adapter,
+          threadId,
+          latest.message,
+          context
+        );
+
+        if (mode === "single-batch") {
+          return;
+        }
+      } finally {
+        if (mode === "single-batch") {
+          const results = await Promise.allSettled(
+            claimedMessageIds.map((messageId) =>
+              this._stateAdapter.set(
+                this.queueClaimKey(adapter, lockKey, messageId),
+                true,
+                this._concurrencyConfig.queueEntryTtlMs
+              )
+            )
+          );
+          for (const [index, result] of results.entries()) {
+            if (result.status === "rejected") {
+              this.logger.error("queue-claim-marker-error", {
+                error: result.reason,
+                lockKey,
+                messageId: claimedMessageIds[index],
+              });
+            }
+          }
+        }
       }
-
-      await this._stateAdapter.extendLock(lock, DEFAULT_LOCK_TTL_MS);
-
-      // Latest message is the one we process
-      const latest = pending.at(-1);
-      if (!latest) {
-        return;
-      }
-      // Everything before it is "skipped" context
-      const skipped = pending.slice(0, -1).map((e) => e.message);
-
-      this.logger.info("message-dequeued", {
-        threadId,
-        lockKey,
-        messageId: latest.message.id,
-        skippedCount: skipped.length,
-        totalSinceLastHandler: pending.length,
-      });
-
-      const context: MessageContext = {
-        skipped,
-        totalSinceLastHandler: pending.length,
-      };
-
-      await this.dispatchToHandlers(adapter, threadId, latest.message, context);
-
-      // After processing, check if MORE messages arrived during this handler
-      // (loop continues)
     }
   }
 
