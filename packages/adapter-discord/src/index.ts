@@ -908,13 +908,15 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
         dateSent: new Date(data.timestamp),
         edited: false,
       },
-      attachments: data.attachments.map((a) => ({
-        type: this.getAttachmentType(a.content_type),
-        url: a.url,
-        name: a.filename,
-        mimeType: a.content_type,
-        size: a.size,
-      })),
+      attachments: data.attachments.map((a) =>
+        this.rehydrateAttachment({
+          type: this.getAttachmentType(a.content_type),
+          url: a.url,
+          name: a.filename,
+          mimeType: a.content_type,
+          size: a.size,
+        })
+      ),
       raw: data,
       isMention: isMentioned,
     });
