@@ -2,4 +2,4 @@
 "@chat-adapter/discord": patch
 ---
 
-Restore attachment downloads for forwarded Discord Gateway messages.
+Restore attachment downloads across Discord inbound message paths.

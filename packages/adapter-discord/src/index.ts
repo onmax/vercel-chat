@@ -1845,15 +1845,17 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
           ? new Date(msg.edited_timestamp)
           : undefined,
       },
-      attachments: (msg.attachments || []).map((att) => ({
-        type: this.getAttachmentType(att.content_type),
-        url: att.url,
-        name: att.filename,
-        mimeType: att.content_type,
-        size: att.size,
-        width: att.width ?? undefined,
-        height: att.height ?? undefined,
-      })),
+      attachments: (msg.attachments || []).map((att) =>
+        this.rehydrateAttachment({
+          type: this.getAttachmentType(att.content_type),
+          url: att.url,
+          name: att.filename,
+          mimeType: att.content_type,
+          size: att.size,
+          width: att.width ?? undefined,
+          height: att.height ?? undefined,
+        })
+      ),
     });
   }
 
@@ -2421,13 +2423,15 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
         edited: message.editedAt !== null,
         editedAt: message.editedAt ?? undefined,
       },
-      attachments: message.attachments.map((a) => ({
-        type: this.getAttachmentType(a.contentType),
-        url: a.url,
-        name: a.name,
-        mimeType: a.contentType ?? undefined,
-        size: a.size,
-      })),
+      attachments: message.attachments.map((a) =>
+        this.rehydrateAttachment({
+          type: this.getAttachmentType(a.contentType),
+          url: a.url,
+          name: a.name,
+          mimeType: a.contentType ?? undefined,
+          size: a.size,
+        })
+      ),
       raw: {
         id: message.id,
         channel_id: channelId,
