@@ -446,6 +446,7 @@ export interface TelegramMessage {
   message_id: number;
   message_thread_id?: number;
   photo?: TelegramPhotoSize[];
+  reply_to_message?: TelegramMessage;
   rich_message?: TelegramRichMessage;
   sender_chat?: TelegramChat;
   sticker?: TelegramFile & { emoji?: string };

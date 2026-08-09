@@ -3343,6 +3343,41 @@ describe("TelegramAdapter", () => {
     expect(forward.nextCursor).toBe("123:2");
   });
 
+  it("parses replied-to message context", () => {
+    const adapter = createTelegramAdapter({
+      botToken: "token",
+      mode: "webhook",
+      logger: mockLogger,
+      userName: "mybot",
+    });
+    const parsed = adapter.parseMessage(
+      sampleMessage({
+        message_id: 12,
+        text: "reply",
+        reply_to_message: sampleMessage({
+          message_id: 11,
+          text: "original",
+          date: 1735689500,
+          from: {
+            id: 789,
+            is_bot: false,
+            first_name: "Original",
+            username: "original",
+          },
+        }),
+      })
+    );
+
+    expect(parsed.replyTo).toBeInstanceOf(Message);
+    expect(parsed.replyTo?.id).toBe("123:11");
+    expect(parsed.replyTo?.threadId).toBe("telegram:123");
+    expect(parsed.replyTo?.text).toBe("original");
+    expect(parsed.replyTo?.author.userName).toBe("original");
+    expect(parsed.replyTo?.metadata.dateSent).toEqual(
+      new Date(1735689500 * 1000)
+    );
+  });
+
   it("decodes structured callback payloads into action id and value", async () => {
     mockFetch
       .mockResolvedValueOnce(

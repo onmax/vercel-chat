@@ -46,6 +46,10 @@ import { Message } from "chat";
       description: 'File attachments.',
       type: 'Attachment[]',
     },
+    replyTo: {
+      description: 'The normalized message this message replies to, when provided by the adapter.',
+      type: 'Message | undefined',
+    },
     links: {
       description: 'Links found in the message, with optional preview metadata.',
       type: 'LinkPreview[]',

@@ -2930,51 +2930,48 @@ export class Chat<
     raw: Message | Record<string, unknown>,
     adapter?: Adapter
   ): Message {
-    if (raw instanceof Message) {
-      if (adapter) {
-        setMessageAdapter(raw, adapter);
-      }
-      return raw;
-    }
-    // After JSON roundtrip, Message.toJSON() was called during stringify,
-    // so the shape matches SerializedMessage
-    const obj = raw as Record<string, unknown>;
     let msg: Message;
-    if (obj._type === "chat:Message") {
-      msg = Message.fromJSON(obj as unknown as SerializedMessage);
+    if (raw instanceof Message) {
+      msg = raw;
     } else {
-      // Fallback: plain object that wasn't serialized via toJSON (e.g., in-memory state)
-      // Reconstruct with defensive defaults
-      const metadata = obj.metadata as Record<string, unknown>;
-      const dateSent = metadata.dateSent;
-      const editedAt = metadata.editedAt;
-      msg = new Message({
-        id: obj.id as string,
-        threadId: obj.threadId as string,
-        text: obj.text as string,
-        formatted: obj.formatted as FormattedContent,
-        raw: obj.raw,
-        author: obj.author as Author,
-        metadata: {
-          dateSent:
-            dateSent instanceof Date ? dateSent : new Date(dateSent as string),
-          edited: metadata.edited as boolean,
-          editedAt: editedAt
-            ? new Date(
-                editedAt instanceof Date
-                  ? editedAt.toISOString()
-                  : (editedAt as string)
-              )
-            : undefined,
-        },
-        attachments: (obj.attachments as Attachment[]) ?? [],
-        isMention: obj.isMention as boolean | undefined,
-        links: (obj.links as LinkPreview[] | undefined) ?? [],
-      });
-    }
-
-    if (adapter) {
-      setMessageAdapter(msg, adapter);
+      // After JSON roundtrip, Message.toJSON() was called during stringify,
+      // so the shape matches SerializedMessage
+      const obj = raw as Record<string, unknown>;
+      if (obj._type === "chat:Message") {
+        msg = Message.fromJSON(obj as unknown as SerializedMessage);
+      } else {
+        // Fallback: plain object that wasn't serialized via toJSON (e.g., in-memory state)
+        // Reconstruct with defensive defaults
+        const metadata = obj.metadata as Record<string, unknown>;
+        const dateSent = metadata.dateSent;
+        const editedAt = metadata.editedAt;
+        msg = new Message({
+          id: obj.id as string,
+          threadId: obj.threadId as string,
+          text: obj.text as string,
+          formatted: obj.formatted as FormattedContent,
+          raw: obj.raw,
+          author: obj.author as Author,
+          metadata: {
+            dateSent:
+              dateSent instanceof Date
+                ? dateSent
+                : new Date(dateSent as string),
+            edited: metadata.edited as boolean,
+            editedAt: editedAt
+              ? new Date(
+                  editedAt instanceof Date
+                    ? editedAt.toISOString()
+                    : (editedAt as string)
+                )
+              : undefined,
+          },
+          attachments: (obj.attachments as Attachment[]) ?? [],
+          replyTo: obj.replyTo as Message | undefined,
+          isMention: obj.isMention as boolean | undefined,
+          links: (obj.links as LinkPreview[] | undefined) ?? [],
+        });
+      }
     }
 
     const rehydrate = adapter?.rehydrateAttachment?.bind(adapter);
@@ -2982,6 +2979,14 @@ export class Chat<
       msg.attachments = msg.attachments.map((att) =>
         att.fetchData ? att : rehydrate(att)
       );
+    }
+
+    if (msg.replyTo) {
+      msg.replyTo = this.rehydrateMessage(msg.replyTo, adapter);
+    }
+
+    if (adapter) {
+      setMessageAdapter(msg, adapter);
     }
 
     return msg;

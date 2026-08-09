@@ -12,6 +12,7 @@ import { Chat } from "./chat";
 import { getEmoji } from "./emoji";
 import { LockError } from "./errors";
 import { jsx } from "./jsx-runtime";
+import { Message } from "./message";
 import {
   createMockAdapter,
   createMockState,
@@ -3767,6 +3768,13 @@ describe("Chat", () => {
         ...att,
         fetchData: mockFetchData,
       }));
+      const mockSubject = {
+        type: "issue",
+        id: "ENG-1",
+        title: "Original message subject",
+        raw: {},
+      };
+      adapter.fetchSubject = vi.fn().mockResolvedValue(mockSubject);
 
       const queueChat = new Chat({
         userName: "testbot",
@@ -3781,9 +3789,15 @@ describe("Chat", () => {
       );
 
       const receivedAttachments: unknown[] = [];
+      let receivedReplyTo: Message | undefined;
+      let receivedReplyToSubject: unknown;
       queueChat.onNewMention(
         vi.fn().mockImplementation(async (_thread, message) => {
           receivedAttachments.push(message.attachments);
+          if (message.replyTo) {
+            receivedReplyTo = message.replyTo;
+            receivedReplyToSubject = await message.replyTo.subject;
+          }
         })
       );
 
@@ -3800,6 +3814,17 @@ describe("Chat", () => {
             fetchData: () => Promise.resolve(Buffer.from("original")),
           },
         ],
+        replyTo: createTestMessage("msg-original", "Original", {
+          raw: { reply: true },
+          attachments: [
+            {
+              type: "file" as const,
+              name: "reply.pdf",
+              fetchMetadata: { url: "https://example.com/reply.pdf" },
+              fetchData: () => Promise.resolve(Buffer.from("original")),
+            },
+          ],
+        }),
       });
 
       await queueChat.handleIncomingMessage(
@@ -3833,6 +3858,10 @@ describe("Chat", () => {
       ) as { fetchData?: () => Promise<Buffer> }[];
       expect(queuedAttachments).toBeDefined();
       expect(queuedAttachments[0].fetchData).toBe(mockFetchData);
+      expect(receivedReplyTo).toBeInstanceOf(Message);
+      expect(receivedReplyTo?.attachments[0]?.fetchData).toBe(mockFetchData);
+      expect(receivedReplyToSubject).toEqual(mockSubject);
+      expect(adapter.fetchSubject).toHaveBeenCalledWith({ reply: true });
     });
 
     it("should skip rehydration for attachments that already have fetchData", async () => {

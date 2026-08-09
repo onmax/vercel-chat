@@ -166,6 +166,7 @@ Incoming messages are normalized across platforms into a consistent format:
 | `author` | `Author` | Message author info |
 | `metadata` | `MessageMetadata` | Timestamps and edit status |
 | `attachments` | `Attachment[]` (optional) | File attachments |
+| `replyTo` | `Message` (optional) | Normalized message this message replies to, when provided by the adapter |
 | `isMention` | `boolean` (optional) | Whether the bot was @-mentioned |
 
 ### Author

@@ -1842,6 +1842,9 @@ export class TelegramAdapter
             : undefined,
       },
       attachments: this.extractAttachments(raw),
+      replyTo: raw.reply_to_message
+        ? this.parseTelegramMessage(raw.reply_to_message, threadId)
+        : undefined,
       isMention: this.isBotMentioned(raw, plainText),
     });
 
