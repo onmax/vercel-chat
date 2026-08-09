@@ -763,6 +763,7 @@ export class TelegramAdapter
         author: latestMessage.author,
         metadata: latestMessage.metadata,
         attachments: parsedMessages.flatMap((message) => message.attachments),
+        replyTo: parsedMessages.find((message) => message.replyTo)?.replyTo,
         isMention: parsedMessages.some((message) => message.isMention),
         links: parsedMessages.flatMap((message) => message.links),
       });

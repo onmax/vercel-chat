@@ -2410,7 +2410,8 @@ describe("ThreadImpl", () => {
     });
 
     it("should wrap a Message as a SentMessage with same fields", () => {
-      const msg = createTestMessage("msg-1", "Hello world");
+      const replyTo = createTestMessage("msg-0", "Original message");
+      const msg = createTestMessage("msg-1", "Hello world", { replyTo });
 
       const sent = thread.createSentMessageFromMessage(msg);
 
@@ -2420,6 +2421,7 @@ describe("ThreadImpl", () => {
       expect(sent.author).toBe(msg.author);
       expect(sent.metadata).toBe(msg.metadata);
       expect(sent.attachments).toBe(msg.attachments);
+      expect(sent.replyTo).toBe(replyTo);
     });
 
     it("should provide edit capability", async () => {

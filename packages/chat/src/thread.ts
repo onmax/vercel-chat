@@ -1039,6 +1039,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
       author: message.author,
       metadata: message.metadata,
       attachments: message.attachments,
+      replyTo: message.replyTo,
       links: message.links,
       isMention: message.isMention,
 

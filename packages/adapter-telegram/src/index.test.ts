@@ -443,6 +443,10 @@ describe("TelegramAdapter", () => {
         media_group_id: "meal-album",
         text: undefined,
         caption: "/analyze both pieces",
+        reply_to_message: sampleMessage({
+          message_id: 40,
+          text: "original meal",
+        }),
         photo: [
           {
             file_id: "photo-1",
@@ -487,12 +491,14 @@ describe("TelegramAdapter", () => {
       {
         attachments: Array<{ fetchMetadata?: { fileId?: string } }>;
         id: string;
+        replyTo?: Message;
         text: string;
       },
     ];
     expect(threadId).toBe("telegram:123");
     expect(parsedMessage.id).toBe("123:42");
     expect(parsedMessage.text).toBe("/analyze both pieces");
+    expect(parsedMessage.replyTo?.text).toBe("original meal");
     expect(
       parsedMessage.attachments.map(
         (attachment) => attachment.fetchMetadata?.fileId
