@@ -981,13 +981,18 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
       channelId: parentChannelId,
       threadId: discordThreadId,
     });
+    const snapshots =
+      data.message_snapshots?.map(({ message }) => message) ?? [];
+    const text = [data.content, ...snapshots.map(({ content }) => content)]
+      .filter(Boolean)
+      .join("\n\n");
 
     // Convert to SDK Message format
     const chatMessage = new Message({
       id: data.id,
       threadId,
-      text: data.content,
-      formatted: this.formatConverter.toAst(data.content),
+      text,
+      formatted: this.formatConverter.toAst(text),
       author: {
         userId: data.author.id,
         userName: data.author.username,
@@ -999,7 +1004,10 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
         dateSent: new Date(data.timestamp),
         edited: false,
       },
-      attachments: data.attachments.map((a) =>
+      attachments: [
+        ...data.attachments,
+        ...snapshots.flatMap(({ attachments }) => attachments),
+      ].map((a) =>
         this.rehydrateAttachment({
           type: this.getAttachmentType(a.content_type),
           url: a.url,
@@ -2498,13 +2506,18 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
       channelId: parentChannelId,
       threadId: discordThreadId,
     });
+    const snapshots =
+      message.messageSnapshots?.map((snapshot) => snapshot) ?? [];
+    const text = [message.content, ...snapshots.map(({ content }) => content)]
+      .filter(Boolean)
+      .join("\n\n");
 
     // Convert discord.js message to our Message format
     const chatMessage = new Message({
       id: message.id,
       threadId,
-      text: message.content,
-      formatted: this.formatConverter.toAst(message.content),
+      text,
+      formatted: this.formatConverter.toAst(text),
       author: {
         userId: message.author.id,
         userName: message.author.username,
@@ -2517,7 +2530,10 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
         edited: message.editedAt !== null,
         editedAt: message.editedAt ?? undefined,
       },
-      attachments: message.attachments.map((a) =>
+      attachments: [
+        ...message.attachments.values(),
+        ...snapshots.flatMap(({ attachments }) => [...attachments.values()]),
+      ].map((a) =>
         this.rehydrateAttachment({
           type: this.getAttachmentType(a.contentType),
           url: a.url,

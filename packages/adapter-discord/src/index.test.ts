@@ -3930,6 +3930,67 @@ describe("legacy gateway interactions", () => {
     );
   });
 
+  it("reads content and attachments from forwarded message snapshots", async () => {
+    const adapter = new TestGatewayDiscordAdapter({
+      botToken: "test-token",
+      publicKey: testPublicKey,
+      applicationId: "test-app-id",
+      logger: mockLogger,
+      respondToChannelIds: ["channel456"],
+    });
+    const chat = createMockChatInstance();
+    await adapter.initialize(chat);
+
+    const client = createGatewayClient();
+    adapter.listen(client);
+    client.emit(Events.MessageCreate, {
+      id: "forwarded-message",
+      channelId: "thread789",
+      guildId: "guild1",
+      content: "",
+      author: {
+        id: "user789",
+        username: "testuser",
+        displayName: "Test User",
+        bot: false,
+      },
+      mentions: { everyone: false, roles: [], has: () => false },
+      channel: { isThread: () => true, parentId: "channel456" },
+      createdAt: new Date("2026-08-14T15:39:39.136Z"),
+      editedAt: null,
+      attachments: [],
+      messageSnapshots: [
+        {
+          content: "Forwarded voice note",
+          attachments: [
+            {
+              contentType: "audio/ogg",
+              url: "https://cdn.discordapp.com/attachments/1/2/voice.ogg",
+              name: "voice.ogg",
+              size: 1234,
+            },
+          ],
+        },
+      ],
+    });
+    await waitForGatewayHandlers();
+
+    expect(chat.handleIncomingMessage).toHaveBeenCalledWith(
+      adapter,
+      "discord:guild1:channel456:thread789",
+      expect.objectContaining({
+        text: "Forwarded voice note",
+        attachments: [
+          expect.objectContaining({
+            mimeType: "audio/ogg",
+            name: "voice.ogg",
+            url: "https://cdn.discordapp.com/attachments/1/2/voice.ogg",
+          }),
+        ],
+      })
+    );
+  });
+
   it("does not treat a parentless thread message as allowlisted", async () => {
     const adapter = new TestGatewayDiscordAdapter({
       botToken: "test-token",
@@ -4137,7 +4198,7 @@ describe("handleWebhook - forwarded gateway events", () => {
         id: "msg123",
         channel_id: "channel456",
         guild_id: "guild1",
-        content: "Hello from gateway",
+        content: "",
         timestamp: "2021-01-01T00:00:00.000Z",
         author: {
           id: "user789",
@@ -4145,13 +4206,21 @@ describe("handleWebhook - forwarded gateway events", () => {
           bot: false,
         },
         mentions: [],
-        attachments: [
+        attachments: [],
+        message_snapshots: [
           {
-            id: "attachment123",
-            filename: "voice.ogg",
-            size: 1234,
-            url: "https://cdn.discordapp.com/attachments/1/2/voice.ogg",
-            content_type: "audio/ogg",
+            message: {
+              content: "Forwarded voice note",
+              attachments: [
+                {
+                  id: "attachment123",
+                  filename: "voice.ogg",
+                  size: 1234,
+                  url: "https://cdn.discordapp.com/attachments/1/2/voice.ogg",
+                  content_type: "audio/ogg",
+                },
+              ],
+            },
           },
         ],
       },
@@ -4172,6 +4241,7 @@ describe("handleWebhook - forwarded gateway events", () => {
       adapter,
       expect.any(String),
       expect.objectContaining({
+        text: "Forwarded voice note",
         attachments: [
           expect.objectContaining({ fetchData: expect.any(Function) }),
         ],
