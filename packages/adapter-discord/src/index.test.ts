@@ -1209,6 +1209,32 @@ describe("parseMessage", () => {
     expect(message.attachments?.[0].fetchData).toEqual(expect.any(Function));
   });
 
+  it("handles a message without attachments", () => {
+    const raw = {
+      id: "message123",
+      channel_id: "channel456",
+      author: {
+        id: "user123",
+        username: "testuser",
+      },
+      content: "Message without attachments",
+      timestamp: "2021-01-01T00:00:00.000Z",
+      edited_timestamp: null,
+      tts: false,
+      mention_everyone: false,
+      mentions: [],
+      mention_roles: [],
+      embeds: [],
+      pinned: false,
+      type: 0,
+    };
+
+    const message = adapter.parseMessage(raw);
+
+    expect(message.text).toBe("Message without attachments");
+    expect(message.attachments).toEqual([]);
+  });
+
   it("parses outer and snapshot content and attachments", () => {
     const rawMessage = {
       id: "message123",

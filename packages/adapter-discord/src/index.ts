@@ -1943,7 +1943,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     const isMe = author.id === this.botUserId;
     const content = flatten(
       msg.content,
-      msg.attachments,
+      msg.attachments ?? [],
       msg.message_snapshots?.map(({ message }) => message) ?? []
     );
 
