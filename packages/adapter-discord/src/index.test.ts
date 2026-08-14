@@ -1209,6 +1209,79 @@ describe("parseMessage", () => {
     expect(message.attachments?.[0].fetchData).toEqual(expect.any(Function));
   });
 
+  it("parses outer and snapshot content and attachments", () => {
+    const rawMessage = {
+      id: "message123",
+      channel_id: "channel456",
+      guild_id: "guild789",
+      author: {
+        id: "user123",
+        username: "testuser",
+        discriminator: "0001",
+      },
+      content: "Outer context",
+      timestamp: "2021-01-01T00:00:00.000Z",
+      edited_timestamp: null,
+      tts: false,
+      mention_everyone: false,
+      mentions: [],
+      mention_roles: [],
+      attachments: [
+        {
+          id: "outer123",
+          filename: "outer.txt",
+          size: 100,
+          url: "https://cdn.discord.com/outer.txt",
+          proxy_url: "https://media.discord.com/outer.txt",
+          content_type: "text/plain",
+        },
+      ],
+      embeds: [],
+      pinned: false,
+      type: 0,
+      message_reference: {
+        type: 1,
+        message_id: "source123",
+        channel_id: "source456",
+        guild_id: "guild789",
+      },
+      message_snapshots: [
+        {
+          message: {
+            type: 0,
+            content: "Forwarded voice note",
+            timestamp: "2021-01-01T00:00:00.000Z",
+            edited_timestamp: null,
+            flags: 0,
+            mentions: [],
+            mention_roles: [],
+            attachments: [
+              {
+                id: "snapshot123",
+                filename: "voice.ogg",
+                size: 1234,
+                url: "https://cdn.discord.com/voice.ogg",
+                proxy_url: "https://media.discord.com/voice.ogg",
+                content_type: "audio/ogg",
+              },
+            ],
+            embeds: [],
+            components: [],
+            sticker_items: [],
+          },
+        },
+      ],
+    };
+
+    const message = adapter.parseMessage(rawMessage);
+
+    expect(message.text).toBe("Outer context\n\nForwarded voice note");
+    expect(message.attachments?.map(({ name }) => name)).toEqual([
+      "outer.txt",
+      "voice.ogg",
+    ]);
+  });
+
   it("handles different attachment types", () => {
     const createMessage = (contentType: string) => ({
       id: "message123",
