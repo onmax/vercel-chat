@@ -655,12 +655,14 @@ export class Chat<
     handler?: MessageHandler<TState>
   ): void {
     if (typeof pattern === "function" && handler === undefined) {
-      handler = pattern;
-      pattern = /[\s\S]*/;
+      this.messagePatterns.push({ pattern: /[\s\S]*/, handler: pattern });
+    } else if (pattern instanceof RegExp && handler !== undefined) {
+      this.messagePatterns.push({ pattern, handler });
+    } else {
+      throw new TypeError("onNewMessage requires a handler or a pattern and handler");
     }
-    this.messagePatterns.push({ pattern, handler });
     this.logger.debug("Registered message pattern handler", {
-      pattern: pattern.toString(),
+      pattern: (typeof pattern === "function" ? /[\s\S]/ : pattern).toString(),
     });
   }
 
