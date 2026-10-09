@@ -833,6 +833,20 @@ describe("Chat", () => {
     expect(helpHandler).toHaveBeenCalled();
   });
 
+  it("should support a catch-all onNewMessage handler", async () => {
+    const handler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(handler);
+
+    const message = createTestMessage("msg-1", "");
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      message
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   describe("isMention property", () => {
     it("should set isMention=true when bot is mentioned", async () => {
       const handler = vi.fn().mockResolvedValue(undefined);

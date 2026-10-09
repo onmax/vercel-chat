@@ -630,6 +630,13 @@ export class Chat<
   }
 
   /**
+   * Register a handler for every new message, including messages without text.
+   *
+   * @param handler - Handler called for every new message
+   */
+  onNewMessage(handler: MessageHandler<TState>): void;
+
+  /**
    * Register a handler for messages matching a regex pattern.
    *
    * @param pattern - Regular expression to match against message text
@@ -643,7 +650,14 @@ export class Chat<
    * });
    * ```
    */
-  onNewMessage(pattern: RegExp, handler: MessageHandler<TState>): void {
+  onNewMessage(
+    pattern: RegExp | MessageHandler<TState>,
+    handler?: MessageHandler<TState>
+  ): void {
+    if (typeof pattern === "function" && handler === undefined) {
+      handler = pattern;
+      pattern = /[\s\S]*/;
+    }
     this.messagePatterns.push({ pattern, handler });
     this.logger.debug("Registered message pattern handler", {
       pattern: pattern.toString(),
