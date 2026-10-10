@@ -847,6 +847,22 @@ describe("Chat", () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
+  it("should run matching pattern handlers alongside the catch-all", async () => {
+    const catchAll = vi.fn().mockResolvedValue(undefined);
+    const pattern = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(catchAll);
+    chat.onNewMessage(HELP_REGEX, pattern);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-1", "Can someone help me?")
+    );
+
+    expect(pattern).toHaveBeenCalledTimes(1);
+    expect(catchAll).toHaveBeenCalledTimes(1);
+  });
+
   describe("isMention property", () => {
     it("should set isMention=true when bot is mentioned", async () => {
       const handler = vi.fn().mockResolvedValue(undefined);
