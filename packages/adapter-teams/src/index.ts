@@ -1982,8 +1982,12 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
       ""
     );
 
+    const isChannel =
+      target.conversationType === "channel" ||
+      (target.conversationType === undefined &&
+        baseConversationId.endsWith("@thread.tacv2"));
     const getThreadId = (messageId?: string): string =>
-      messageId && baseConversationId.endsWith("@thread.tacv2")
+      messageId && isChannel
         ? this.encodeThreadId({
             ...target,
             conversationId: `${baseConversationId};messageid=${messageId}`,

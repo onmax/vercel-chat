@@ -1322,6 +1322,42 @@ describe("TeamsAdapter", () => {
       }
     });
 
+    it("uses the explicit conversation type for channel receipt IDs", async () => {
+      const adapter = createTeamsAdapter({
+        appId: "test-app-id",
+        appPassword: "test",
+        logger,
+      });
+      const mockApp = (
+        adapter as unknown as { app: { sendTo: ReturnType<typeof vi.fn> } }
+      ).app;
+      mockApp.sendTo = vi.fn(async () => ({ id: "root-100" }));
+
+      const personalId = adapter.encodeThreadId({
+        conversationId: "19:personal@thread.tacv2",
+        conversationType: "personal",
+        serviceUrl: TEST_SERVICE_URL,
+      });
+      const channelId = adapter.encodeThreadId({
+        conversationId: "a:channel",
+        conversationType: "channel",
+        serviceUrl: TEST_SERVICE_URL,
+      });
+
+      await expect(
+        adapter.postChannelMessage(personalId, { markdown: "Personal" })
+      ).resolves.toMatchObject({ threadId: personalId });
+      await expect(
+        adapter.postChannelMessage(channelId, { markdown: "Channel" })
+      ).resolves.toMatchObject({
+        threadId: adapter.encodeThreadId({
+          conversationId: "a:channel;messageid=root-100",
+          conversationType: "channel",
+          serviceUrl: TEST_SERVICE_URL,
+        }),
+      });
+    });
+
     it.each([
       "text",
       "card",
