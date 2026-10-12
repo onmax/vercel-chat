@@ -266,7 +266,7 @@ az ad app permission admin-consent --id <appId>
 
 By default, Teams bots only receive messages when directly @-mentioned. The RSC permissions above also enable receiving all messages in channels and group chats as a side effect.
 
-Incoming messages set `message.author.isBot` for the adapter's own bot, senders with `from.role: "bot"`, and Teams bot account IDs starting with `28:`. `message.author.isMe` identifies only the adapter's own bot. These fields let handlers exclude bot replies from human-only conversations.
+The adapter sets `isBot` for the adapter's own bot, senders with `from.role: "bot"`, and Teams bot account IDs starting with `28:`. `isMe` identifies only the adapter's own bot. The same values appear on `message.author` and on `event.user` for reactions, card actions, and dialog events, so handlers can exclude bot activity from human-only conversations.
 
 ## Bot joins
 

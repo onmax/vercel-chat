@@ -720,6 +720,7 @@ describe("TeamsAdapter", () => {
 
     it.each([
       { id: "other-bot", role: "bot", isBot: true, isMe: false },
+      { id: "other-bot", role: "Bot", isBot: true, isMe: false },
       { id: "28:other-bot", isBot: true, isMe: false },
       { id: "28:test-app", isBot: true, isMe: true },
       { id: "test-app", isBot: true, isMe: true },
@@ -1833,6 +1834,31 @@ describe("TeamsAdapter", () => {
       expect(message?.author.isMe).toBe(false);
     });
 
+    it("skips the cached user lookup for bot senders without an AAD object ID", async () => {
+      const { adapter, chat, getMemberById, state } = await setup({
+        email: "bot@example.com",
+        name: "Other bot",
+      });
+      state.cache.set("teams:aadObjectId:28:other-bot", "bot-aad-id");
+      const getUser = vi.spyOn(adapter, "getUser");
+      const botActivity = {
+        ...activity(),
+        from: { id: "28:other-bot", name: "Other bot" },
+      };
+
+      await adapter.handleIncoming(botActivity, getMemberById);
+
+      expect(getUser).not.toHaveBeenCalled();
+      expect(state.get).not.toHaveBeenCalledWith(
+        "teams:aadObjectId:28:other-bot"
+      );
+      expect(getMemberById).not.toHaveBeenCalled();
+      expect(chat.processMessage).toHaveBeenCalledOnce();
+      const message = vi.mocked(chat.processMessage).mock.calls[0]?.[2];
+      expect(message?.author.isBot).toBe(true);
+      expect(message?.author.email).toBeUndefined();
+    });
+
     it("hydrates email from the conversation member without Graph", async () => {
       const { adapter, chat, getMemberById, mockApp, state } = await setup({
         email: "alice@example.com",
@@ -1973,6 +1999,163 @@ describe("TeamsAdapter", () => {
     });
   });
 
+  describe("sender bot classification on events", () => {
+    class EventTestAdapter extends TeamsAdapter {
+      reaction(activity: Record<string, unknown>) {
+        this.handleReactionFromContext({ activity } as never);
+      }
+
+      message(activity: Record<string, unknown>) {
+        return this.handleMessageActivity({ activity } as never);
+      }
+
+      cardAction(activity: Record<string, unknown>) {
+        return this.handleAdaptiveCardAction({ activity } as never);
+      }
+
+      dialogSubmit(activity: Record<string, unknown>) {
+        return this.handleDialogSubmit({ activity } as never);
+      }
+    }
+
+    const setup = async () => {
+      const adapter = new EventTestAdapter({
+        appId: "test-app",
+        appPassword: "test",
+        logger,
+      });
+      const chat = createMockChatInstance();
+      const mockApp = (
+        adapter as unknown as {
+          app: { initialize: ReturnType<typeof vi.fn> };
+        }
+      ).app;
+      mockApp.initialize = vi.fn(async () => undefined);
+      await adapter.initialize(chat);
+      return { adapter, chat };
+    };
+
+    const baseActivity = (from: { id: string; role?: string }) => ({
+      id: "activity-100",
+      from: { ...from, name: "Sender" },
+      conversation: { id: "19:abc@thread.tacv2;messageid=1767297849909" },
+      serviceUrl: TEST_SERVICE_URL,
+    });
+
+    it.each([
+      { id: "28:other-bot", role: undefined, isBot: true },
+      { id: "other-bot", role: "Bot", isBot: true },
+      { id: "29:human", role: "user", isBot: false },
+    ])("classifies reaction sender $id with role $role", async ({
+      id,
+      role,
+      isBot,
+    }) => {
+      const { adapter, chat } = await setup();
+
+      adapter.reaction({
+        ...baseActivity({ id, role }),
+        type: "messageReaction",
+        reactionsAdded: [{ type: "like" }],
+        reactionsRemoved: [{ type: "heart" }],
+      });
+
+      expect(chat.processReaction).toHaveBeenCalledTimes(2);
+      for (const [event] of vi.mocked(chat.processReaction).mock.calls) {
+        expect(event.user.userId).toBe(id);
+        expect(event.user.isBot).toBe(isBot);
+        expect(event.user.isMe).toBe(false);
+      }
+    });
+
+    it("classifies a bot sender on an Action.Submit message action", async () => {
+      const { adapter, chat } = await setup();
+
+      await adapter.message({
+        ...baseActivity({ id: "28:other-bot" }),
+        type: "message",
+        value: { actionId: "approve", value: "yes" },
+      });
+
+      expect(chat.processMessage).not.toHaveBeenCalled();
+      const event = vi.mocked(chat.processAction).mock.calls[0]?.[0];
+      expect(event?.actionId).toBe("approve");
+      expect(event?.user.isBot).toBe(true);
+      expect(event?.user.isMe).toBe(false);
+    });
+
+    it("classifies a bot sender on an adaptive card action", async () => {
+      const { adapter, chat } = await setup();
+
+      await adapter.cardAction({
+        ...baseActivity({ id: "28:other-bot" }),
+        type: "invoke",
+        name: "adaptiveCard/action",
+        value: { action: { data: { actionId: "approve", value: "yes" } } },
+      });
+
+      const event = vi.mocked(chat.processAction).mock.calls[0]?.[0];
+      expect(event?.actionId).toBe("approve");
+      expect(event?.user.isBot).toBe(true);
+    });
+
+    it("keeps a human sender on an adaptive card action", async () => {
+      const { adapter, chat } = await setup();
+
+      await adapter.cardAction({
+        ...baseActivity({ id: "29:human", role: "user" }),
+        type: "invoke",
+        name: "adaptiveCard/action",
+        value: { action: { data: { actionId: "approve", value: "yes" } } },
+      });
+
+      const event = vi.mocked(chat.processAction).mock.calls[0]?.[0];
+      expect(event?.user.isBot).toBe(false);
+    });
+
+    it("classifies a bot sender on every auto-submit fan-out action", async () => {
+      const { adapter, chat } = await setup();
+
+      await adapter.cardAction({
+        ...baseActivity({ id: "28:other-bot" }),
+        type: "invoke",
+        name: "adaptiveCard/action",
+        value: {
+          action: {
+            data: { actionId: "__auto_submit", color: "red", size: "large" },
+          },
+        },
+      });
+
+      expect(chat.processAction).toHaveBeenCalledTimes(2);
+      for (const [event] of vi.mocked(chat.processAction).mock.calls) {
+        expect(event.user.isBot).toBe(true);
+      }
+    });
+
+    it("classifies a bot sender on dialog.submit", async () => {
+      const { adapter, chat } = await setup();
+
+      await adapter.dialogSubmit({
+        ...baseActivity({ id: "28:other-bot" }),
+        type: "invoke",
+        name: "task/submit",
+        value: {
+          data: {
+            __contextId: "context-1",
+            __callbackId: "feedback",
+            comment: "Looks good",
+          },
+        },
+      });
+
+      const event = vi.mocked(chat.processModalSubmit).mock.calls[0]?.[0];
+      expect(event?.callbackId).toBe("feedback");
+      expect(event?.user.isBot).toBe(true);
+      expect(event?.user.isMe).toBe(false);
+    });
+  });
+
   describe("getUser", () => {
     it("should return user info when aadObjectId is cached and Graph call succeeds", async () => {
       const adapter = new TeamsAdapter({
@@ -2012,6 +2195,53 @@ describe("TeamsAdapter", () => {
       expect(user?.userName).toBe("alice@contoso.com");
       expect(user?.userId).toBe("29:user-123");
       expect(user?.isBot).toBe(false);
+    });
+
+    it.each([
+      { userId: "28:other-bot", isBot: true },
+      { userId: "29:user-123", isBot: false },
+    ])("classifies cached user $userId as isBot $isBot", async ({
+      userId,
+      isBot,
+    }) => {
+      const adapter = new TeamsAdapter({
+        appId: "test",
+        appPassword: "test",
+        logger,
+      });
+
+      const state = createMockState();
+      state.cache.set(`teams:aadObjectId:${userId}`, "aad-object-id-456");
+      state.cache.set(
+        "teams:userInfo:aad-object-id-456",
+        JSON.stringify({
+          email: "sender@contoso.com",
+          fullName: "Sender",
+          isBot: false,
+          userId: "stale-user-id",
+          userName: "sender@contoso.com",
+        })
+      );
+      const mockChat = createMockChatInstance({ state });
+
+      const mockApp = (
+        adapter as unknown as {
+          app: {
+            initialize: ReturnType<typeof vi.fn>;
+            graph: { call: ReturnType<typeof vi.fn> };
+          };
+        }
+      ).app;
+      mockApp.initialize = vi.fn(async () => undefined);
+      mockApp.graph = { call: vi.fn() };
+
+      await adapter.initialize(mockChat);
+
+      const user = await adapter.getUser(userId);
+      expect(mockApp.graph.call).not.toHaveBeenCalled();
+      expect(user?.userId).toBe(userId);
+      expect(user?.email).toBe("sender@contoso.com");
+      expect(user?.isBot).toBe(isBot);
     });
 
     it("should return null when aadObjectId is not cached", async () => {
