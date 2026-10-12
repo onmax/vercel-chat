@@ -137,6 +137,35 @@ threadIdContract<TeamsThreadId>({
 });
 
 describe("Teams conversation type routing", () => {
+  it.each([
+    ["19:opaque", "channel"],
+    ["19:channel@thread.skype", "channel"],
+    ["19:channel@thread.skype;messageid=1767297849909", "channel"],
+    ["19:group@thread.tacv2", "groupChat"],
+    ["19:group@thread.tacv2;messageid=1767297849909", "groupChat"],
+  ] as const)("preserves the explicit type of %s", (conversationId, conversationType) => {
+    const target = {
+      conversationId,
+      conversationType,
+      serviceUrl: TEST_SERVICE_URL,
+    };
+    const encoded = contractAdapter.encodeThreadId(target);
+
+    expect(contractAdapter.decodeThreadId(encoded)).toEqual(target);
+    expect(contractAdapter.isDM(encoded)).toBe(false);
+  });
+
+  it.each([
+    ["19:channel@thread.tacv2;messageid=1767297849909", "channel"],
+    ["19:group@thread.v2", "groupChat"],
+  ] as const)("keeps the legacy ID for %s", (conversationId, conversationType) => {
+    const target = { conversationId, serviceUrl: TEST_SERVICE_URL };
+
+    expect(
+      contractAdapter.encodeThreadId({ ...target, conversationType })
+    ).toBe(contractAdapter.encodeThreadId(target));
+  });
+
   it("keeps the legacy ID when the conversation type agrees with its prefix", () => {
     const personal = contractAdapter.encodeThreadId({
       conversationId: "a:personal-conversation",
