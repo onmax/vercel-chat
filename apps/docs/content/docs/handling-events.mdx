@@ -20,7 +20,7 @@ When a message arrives, the SDK evaluates handlers in this order:
 1. Direct messages: if the thread is a DM and any `onDirectMessage` handlers are registered, they fire before `onSubscribedMessage`, `onNewMention`, and pattern handlers.
 2. Subscribed threads: if the thread is subscribed, `onSubscribedMessage` fires and no other message handler runs. DMs reach this step only when no `onDirectMessage` handlers are registered.
 3. Mentions: if the bot is @-mentioned in an unsubscribed thread, `onNewMention` fires. For backward compatibility, unsubscribed DMs are treated as mentions when no `onDirectMessage` handler is registered.
-4. Pattern matches: if the message text matches any `onNewMessage` regex patterns, those handlers fire.
+4. Pattern matches: if the message text matches any `onNewMessage` regex patterns, those handlers fire. A handler registered without a pattern receives every otherwise-unhandled new message, including messages without text.
 
 Reactions, slash commands, actions, and modals have their own dedicated routing and are not affected by subscription state.
 
@@ -153,7 +153,7 @@ bot.onSubscribedMessage(async (thread, message) => {
 
 ## Handling pattern matches
 
-`onNewMessage` fires for messages matching a regex pattern in threads the bot is not subscribed to. Use it for keyword-triggered responses without requiring an @-mention.
+`onNewMessage` fires for messages matching a regex pattern in threads the bot is not subscribed to. Use it for keyword-triggered responses without requiring an @-mention. Register it without a pattern to receive every otherwise-unhandled message in those threads, including attachment-only messages.
 
 ```typescript title="lib/bot.ts" lineNumbers
 bot.onNewMessage(/^help$/i, async (thread, message) => {

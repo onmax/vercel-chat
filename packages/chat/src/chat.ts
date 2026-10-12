@@ -90,6 +90,7 @@ const DEFAULT_LOCK_TTL_MS = 30_000; // 30 seconds
 const DEFAULT_MAX_LOCK_LIFETIME_MS = 600_000; // 10 minutes
 const ACTIVE_TURN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const ABORT_POLL_INTERVAL_MS = 250;
+const MATCH_ALL_MESSAGE_REGEX = /[\s\S]*/;
 
 /** Handle returned by startLockHeartbeat for the duration of a held lock. */
 interface LockHeartbeat {
@@ -630,6 +631,15 @@ export class Chat<
   }
 
   /**
+   * Register a handler for every otherwise-unhandled new message, including messages without text.
+   *
+   * @param handler - Handler called for every otherwise-unhandled new message
+   */
+  onNewMessage(handler: MessageHandler<TState>): void;
+
+  onNewMessage(pattern: RegExp, handler: MessageHandler<TState>): void;
+
+  /**
    * Register a handler for messages matching a regex pattern.
    *
    * @param pattern - Regular expression to match against message text
@@ -643,10 +653,27 @@ export class Chat<
    * });
    * ```
    */
-  onNewMessage(pattern: RegExp, handler: MessageHandler<TState>): void {
-    this.messagePatterns.push({ pattern, handler });
+  onNewMessage(
+    pattern: RegExp | MessageHandler<TState>,
+    handler?: MessageHandler<TState>
+  ): void {
+    if (typeof pattern === "function" && handler === undefined) {
+      this.messagePatterns.push({
+        pattern: MATCH_ALL_MESSAGE_REGEX,
+        handler: pattern,
+      });
+    } else if (pattern instanceof RegExp && handler !== undefined) {
+      this.messagePatterns.push({ pattern, handler });
+    } else {
+      throw new TypeError(
+        "onNewMessage requires a handler or a pattern and handler"
+      );
+    }
     this.logger.debug("Registered message pattern handler", {
-      pattern: pattern.toString(),
+      pattern: (typeof pattern === "function"
+        ? MATCH_ALL_MESSAGE_REGEX
+        : pattern
+      ).toString(),
     });
   }
 

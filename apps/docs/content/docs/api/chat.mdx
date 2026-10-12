@@ -148,7 +148,7 @@ bot.onSubscribedMessage(async (thread, message) => {
 
 ### onNewMessage
 
-Fires for messages matching a regex pattern in unsubscribed threads.
+Fires for messages matching a regex pattern in unsubscribed threads. Pass only a handler to receive every otherwise-unhandled new message in those threads, including messages without text.
 
 ```typescript
 bot.onNewMessage(/^!help/i, async (thread, message) => {
@@ -156,14 +156,22 @@ bot.onNewMessage(/^!help/i, async (thread, message) => {
 });
 ```
 
+To handle every otherwise-unhandled message in an unsubscribed thread, register a handler without a pattern:
+
+```typescript
+bot.onNewMessage(async (thread, message) => {
+  await thread.post(`Received: ${message.text || "an attachment"}`);
+});
+```
+
 <TypeTable
   type={{
     pattern: {
-      description: 'Regular expression to match against message text.',
+      description: 'Optional regular expression to match against message text. Omit it to receive all messages that reach pattern routing.',
       type: 'RegExp',
     },
     handler: {
-      description: 'Handler called when the pattern matches.',
+      description: 'Handler called when the pattern matches, or for every message that reaches pattern routing when no pattern is supplied.',
       type: '(thread: Thread, message: Message) => Promise<void>',
     },
   }}
