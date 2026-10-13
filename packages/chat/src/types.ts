@@ -1985,10 +1985,15 @@ export type DirectMessageHandler<TState = Record<string, unknown>> = (
 ) => void | Promise<void>;
 
 /**
- * Handler for messages matching a regex pattern.
+ * Handler for messages reaching pattern routing, optionally filtered by a
+ * regex pattern.
  *
- * Registered via `chat.onNewMessage(pattern, handler)`. Called when a message
- * matches the pattern in an unsubscribed thread.
+ * Registered via `chat.onNewMessage(handler)` or
+ * `chat.onNewMessage(pattern, handler)`. Called when a message matches the
+ * pattern in an unsubscribed, unmentioned, non-DM thread. The handler-only
+ * form is unfiltered and receives every message reaching pattern routing,
+ * including messages without text. All `onNewMessage` handlers run
+ * sequentially in registration order.
  */
 export type MessageHandler<TState = Record<string, unknown>> = (
   thread: Thread<TState>,

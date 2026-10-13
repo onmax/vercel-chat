@@ -187,7 +187,7 @@ Templates must be created and approved in [WhatsApp Manager](https://business.fa
 Use `thread.reply()` to quote a specific message in WhatsApp:
 
 ```typescript
-bot.onNewMessage(async (thread, message) => {
+bot.onDirectMessage(async (thread, message) => {
   await thread.reply(message, {
     markdown: "I can help with that.",
   });
@@ -234,7 +234,7 @@ Incoming media attachments expose a lazy `fetchData()`. Media is downloaded only
 WhatsApp supports typing indicators through `thread.startTyping()` or `adapter.startTyping(threadId)`. Use it when the bot is about to respond and may take a few seconds:
 
 ```typescript
-bot.onNewMessage(async (thread, message) => {
+bot.onDirectMessage(async (thread, message) => {
   await thread.startTyping();
 
   await thread.post({

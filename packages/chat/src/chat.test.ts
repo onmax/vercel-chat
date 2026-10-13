@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const ANY_REGEX = /.*/;
 const HELP_REGEX = /help/i;
 const HELLO_REGEX = /hello/i;
+const GLOBAL_HELP_REGEX = /help/g;
+const FROZEN_HELP_REGEX = Object.freeze(/help/i);
 
 async function* chunks(): AsyncGenerator<string> {
   yield "Hello";
@@ -11,7 +13,7 @@ async function* chunks(): AsyncGenerator<string> {
 import { Chat } from "./chat";
 import { activeConversation } from "./context";
 import { getEmoji } from "./emoji";
-import { LockError } from "./errors";
+import { ChatError, LockError } from "./errors";
 import { jsx } from "./jsx-runtime";
 import { Message } from "./message";
 import {
@@ -831,6 +833,191 @@ describe("Chat", () => {
     );
 
     expect(helpHandler).toHaveBeenCalled();
+  });
+
+  it("should call an unfiltered handler for messages without text", async () => {
+    const handler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(handler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-1", "", {
+        attachments: [
+          {
+            type: "file",
+            url: "https://example.com/report.pdf",
+            name: "report.pdf",
+          },
+        ],
+      })
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("should run unfiltered and pattern handlers in registration order", async () => {
+    const calls: string[] = [];
+    const unfilteredHandler = vi.fn().mockImplementation(async () => {
+      calls.push("unfiltered");
+    });
+    const patternHandler = vi.fn().mockImplementation(async () => {
+      calls.push("pattern");
+    });
+    chat.onNewMessage(unfilteredHandler);
+    chat.onNewMessage(HELLO_REGEX, patternHandler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-1", "hello")
+    );
+
+    expect(unfilteredHandler).toHaveBeenCalledTimes(1);
+    expect(patternHandler).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(["unfiltered", "pattern"]);
+  });
+
+  it("should match a global regex pattern on consecutive messages", async () => {
+    const handler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(GLOBAL_HELP_REGEX, handler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-1", "help")
+    );
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-2", "help")
+    );
+
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it("should match a frozen non-global regex pattern", async () => {
+    const handler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(FROZEN_HELP_REGEX, handler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-1", "help")
+    );
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("should not call an unfiltered handler for DMs handled by onDirectMessage", async () => {
+    const unfilteredHandler = vi.fn().mockResolvedValue(undefined);
+    const dmHandler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(unfilteredHandler);
+    chat.onDirectMessage(dmHandler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:DU123:1234.5678",
+      createTestMessage("msg-dm", "hello")
+    );
+
+    expect(dmHandler).toHaveBeenCalledTimes(1);
+    expect(unfilteredHandler).not.toHaveBeenCalled();
+  });
+
+  it("should not call an unfiltered handler for DMs routed to onNewMention", async () => {
+    const unfilteredHandler = vi.fn().mockResolvedValue(undefined);
+    const mentionHandler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(unfilteredHandler);
+    chat.onNewMention(mentionHandler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:DU123:1234.5678",
+      createTestMessage("msg-dm", "hello")
+    );
+
+    expect(mentionHandler).toHaveBeenCalledTimes(1);
+    expect(unfilteredHandler).not.toHaveBeenCalled();
+  });
+
+  it("should not call an unfiltered handler for channel mentions", async () => {
+    const unfilteredHandler = vi.fn().mockResolvedValue(undefined);
+    const mentionHandler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(unfilteredHandler);
+    chat.onNewMention(mentionHandler);
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-mention", "hello", { isMention: true })
+    );
+
+    expect(mentionHandler).toHaveBeenCalledTimes(1);
+    expect(unfilteredHandler).not.toHaveBeenCalled();
+  });
+
+  it("should not call an unfiltered handler in subscribed threads", async () => {
+    const unfilteredHandler = vi.fn().mockResolvedValue(undefined);
+    const subscribedHandler = vi.fn().mockResolvedValue(undefined);
+    chat.onNewMessage(unfilteredHandler);
+    chat.onSubscribedMessage(subscribedHandler);
+    await mockState.subscribe("slack:C123:1234.5678");
+
+    await chat.handleIncomingMessage(
+      mockAdapter,
+      "slack:C123:1234.5678",
+      createTestMessage("msg-subscribed", "hello")
+    );
+
+    expect(subscribedHandler).toHaveBeenCalledTimes(1);
+    expect(unfilteredHandler).not.toHaveBeenCalled();
+  });
+
+  describe("onNewMessage validation", () => {
+    function captureError(register: () => void): unknown {
+      try {
+        register();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    }
+
+    it("should throw when a handler is passed with a second argument", () => {
+      const handler = vi.fn();
+      const error = captureError(() =>
+        (chat.onNewMessage as unknown as (a: unknown, b: unknown) => void).call(
+          chat,
+          handler,
+          HELP_REGEX
+        )
+      );
+      expect(error).toBeInstanceOf(ChatError);
+      expect((error as ChatError).code).toBe("INVALID_PATTERN");
+    });
+
+    it("should throw when the first argument is not a RegExp or function", () => {
+      const error = captureError(() =>
+        (chat.onNewMessage as unknown as (a: unknown, b: unknown) => void).call(
+          chat,
+          "help",
+          vi.fn()
+        )
+      );
+      expect(error).toBeInstanceOf(ChatError);
+      expect((error as ChatError).code).toBe("INVALID_PATTERN");
+    });
+
+    it("should throw when a pattern is passed without a handler function", () => {
+      const error = captureError(() =>
+        (
+          chat.onNewMessage as unknown as (a: unknown, b?: unknown) => void
+        ).call(chat, HELP_REGEX)
+      );
+      expect(error).toBeInstanceOf(ChatError);
+      expect((error as ChatError).code).toBe("INVALID_HANDLER");
+    });
   });
 
   describe("isMention property", () => {

@@ -142,7 +142,7 @@ interface StoredModalContext {
 
 interface MessagePattern<TState = Record<string, unknown>> {
   handler: MessageHandler<TState>;
-  pattern: RegExp;
+  pattern?: RegExp;
 }
 
 /** Filter can be EmojiValue objects, emoji names, or raw emoji formats */
@@ -630,6 +630,18 @@ export class Chat<
   }
 
   /**
+   * Register an unfiltered handler for every message that reaches pattern
+   * routing: unsubscribed, unmentioned, non-DM messages, including messages
+   * without text such as attachment-only messages.
+   *
+   * All `onNewMessage` handlers run sequentially in registration order. DMs,
+   * mentions, and subscribed threads use their higher-priority handlers.
+   *
+   * @param handler - Handler called for every message reaching pattern routing
+   */
+  onNewMessage(handler: MessageHandler<TState>): void;
+
+  /**
    * Register a handler for messages matching a regex pattern.
    *
    * @param pattern - Regular expression to match against message text
@@ -643,10 +655,43 @@ export class Chat<
    * });
    * ```
    */
-  onNewMessage(pattern: RegExp, handler: MessageHandler<TState>): void {
-    this.messagePatterns.push({ pattern, handler });
+  onNewMessage(pattern: RegExp, handler: MessageHandler<TState>): void;
+
+  onNewMessage(
+    patternOrHandler: RegExp | MessageHandler<TState>,
+    handler?: MessageHandler<TState>
+  ): void {
+    if (typeof patternOrHandler === "function") {
+      if (handler !== undefined) {
+        throw new ChatError(
+          "onNewMessage received a handler as its first argument and an extra second argument. Pass the pattern first: onNewMessage(pattern, handler), or only a handler: onNewMessage(handler).",
+          "INVALID_PATTERN"
+        );
+      }
+      this.messagePatterns.push({ handler: patternOrHandler });
+      this.logger.debug("Registered message pattern handler", {
+        pattern: "unfiltered",
+      });
+      return;
+    }
+
+    if (!(patternOrHandler instanceof RegExp)) {
+      throw new ChatError(
+        `onNewMessage expects a RegExp or a handler function as its first argument, received ${typeof patternOrHandler}`,
+        "INVALID_PATTERN"
+      );
+    }
+
+    if (typeof handler !== "function") {
+      throw new ChatError(
+        `onNewMessage(pattern, handler) requires a handler function, received ${typeof handler}`,
+        "INVALID_HANDLER"
+      );
+    }
+
+    this.messagePatterns.push({ pattern: patternOrHandler, handler });
     this.logger.debug("Registered message pattern handler", {
-      pattern: pattern.toString(),
+      pattern: patternOrHandler.toString(),
     });
   }
 
@@ -3269,20 +3314,26 @@ export class Chat<
     // Check message patterns
     this.logger.debug("Checking message patterns", {
       patternCount: this.messagePatterns.length,
-      patterns: this.messagePatterns.map((p) => p.pattern.toString()),
+      patterns: this.messagePatterns.map(
+        (p) => p.pattern?.toString() ?? "unfiltered"
+      ),
       messageText: message.text,
     });
     let matchedPattern = false;
     for (const { pattern, handler } of this.messagePatterns) {
-      const matches = pattern.test(message.text);
+      if (pattern?.global || pattern?.sticky) {
+        pattern.lastIndex = 0;
+      }
+      const matches = !pattern || pattern.test(message.text);
+      const patternLabel = pattern?.toString() ?? "unfiltered";
       this.logger.debug("Pattern test", {
-        pattern: pattern.toString(),
+        pattern: patternLabel,
         text: message.text,
         matches,
       });
       if (matches) {
         this.logger.debug("Message matched pattern - calling handler", {
-          pattern: pattern.toString(),
+          pattern: patternLabel,
         });
         matchedPattern = true;
         await handler(thread, message, context);
