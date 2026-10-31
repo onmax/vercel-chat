@@ -2,7 +2,7 @@
  * Shared test utilities for chat package tests.
  */
 import { vi } from "vitest";
-import { parseMarkdown } from "./markdown";
+import { paragraph, root } from "./markdown";
 import { Message, type MessageData } from "./message";
 import type {
   Adapter,
@@ -235,7 +235,7 @@ export function createTestMessage(
     id,
     threadId: "slack:C123:1234.5678",
     text,
-    formatted: parseMarkdown(text),
+    formatted: root([paragraph([text])]),
     raw: {},
     author: {
       userId: "U123",
