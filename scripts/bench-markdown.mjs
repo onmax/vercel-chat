@@ -39,7 +39,7 @@ export function retry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
 
 See https://vercel.com/docs/deployments for details, or ping the on-call.
 `;
-const long = Array.from({ length: 7 }, () => medium).join("\n\n"); // ~8 KB
+const long = Array.from({ length: 7 }, () => medium).join("\n\n");
 const slackMrkdwn =
   "Hey <@U123ABC>, *deploy* failed in <#C456|ops>. See <https://vercel.com/x|the logs> and _retry_ ~maybe~ later.\n> quoted line\n```\ncode block\n```";
 
