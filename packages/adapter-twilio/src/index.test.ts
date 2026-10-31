@@ -6,7 +6,7 @@ import {
   createTestMessage,
   threadIdContract,
 } from "@chat-adapter/tests";
-import { Chat, Message, paragraph, parseMarkdown, root, text } from "chat";
+import { Chat, Message, paragraph, parseMarkdown, root } from "chat";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetTwilioContentCacheForTests } from "./api/content";
 import {
@@ -16,11 +16,11 @@ import {
 } from "./index";
 
 describe("TwilioAdapter", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetTwilioContentCacheForTests();
   });
 
-  it("uses the full DM thread id as its channel id", () => {
+  it("uses the full DM thread id as its channel id", async () => {
     // Encode/decode round-trips and pinned encoded strings live in the shared
     // `threadIdContract` at the bottom of this file; channelIdFromThreadId is
     // not covered by the contract, so it stays asserted here.
@@ -174,7 +174,7 @@ describe("TwilioAdapter", () => {
     });
   });
 
-  it("passes location attachments through rehydration untouched", () => {
+  it("passes location attachments through rehydration untouched", async () => {
     const adapter = createTwilioAdapter({
       accountSid: "AC123",
       authToken: "token",
@@ -268,10 +268,10 @@ describe("TwilioAdapter", () => {
     expect(result.threadId).toBe("twilio:MG123:%2B15550000002");
   });
 
-  it("parses inbound REST messages with the sender as author", () => {
+  it("parses inbound REST messages with the sender as author", async () => {
     const adapter = createTwilioAdapter();
 
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       body: "hello",
       date_created: "Tue, 01 Apr 2025 12:00:00 +0000",
       direction: "inbound",
@@ -852,9 +852,9 @@ describe("TwilioAdapter", () => {
     expect(chat.processAction).not.toHaveBeenCalled();
   });
 
-  it("throws on parsing action webhooks as messages", () => {
+  it("throws on parsing action webhooks as messages", async () => {
     const adapter = createTwilioAdapter();
-    expect(() =>
+    await expect(
       adapter.parseMessage({
         buttonPayload: "test",
         from: "+1",
@@ -862,12 +862,10 @@ describe("TwilioAdapter", () => {
         raw: new URLSearchParams(),
         to: "+2",
       } as never)
-    ).toThrow("Cannot parse action webhook");
+    ).rejects.toThrow("Cannot parse action webhook");
   });
 
   describe("inbound markdown bounds", () => {
-    const fallback = (value: string) => root([paragraph([text(value)])]);
-
     async function dispatchSignedSms(body: string): Promise<Message> {
       const chat = createMockChatInstance();
       const adapter = createTwilioAdapter({ authToken: AUTH_TOKEN });
@@ -922,12 +920,13 @@ describe("TwilioAdapter", () => {
       const message = await load("**bold** and _soft_");
 
       expect(message.text).toBe("**bold** and _soft_");
-      expect(message.formatted).toEqual(parseMarkdown("**bold** and _soft_"));
+      expect(message.formatted).toEqual(
+        await parseMarkdown("**bold** and _soft_")
+      );
     });
 
-    const verbatimBodies = [
+    const pathologicalBodies = [
       ["an emphasis run", "*a".repeat(8192)],
-      ["6,000 nested blockquotes", ">".repeat(6000)],
       ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
       ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
     ] as const;
@@ -939,16 +938,28 @@ describe("TwilioAdapter", () => {
           ["fetchMessage", fetchStoredMessage],
         ] as const
       ).flatMap(([source, load]) =>
-        verbatimBodies.map(
+        pathologicalBodies.map(
           ([label, body]) => [source, label, load, body] as const
         )
       )
-    )("keeps text from %s with %s verbatim", async (_, __, load, body) => {
+    )("parses text from %s with %s", async (_, __, load, body) => {
       const message = await load(body);
 
       expect(message.text).toBe(body);
-      expect(message.formatted).toEqual(fallback(body));
+      expect(message.formatted).toEqual(await parseMarkdown(body));
       expect(() => JSON.stringify(message.formatted)).not.toThrow();
+      expect(() => JSON.stringify(message.toJSON())).not.toThrow();
+    });
+
+    it.each([
+      ["a signed webhook", dispatchSignedSms],
+      ["fetchMessage", fetchStoredMessage],
+    ])("keeps text from %s with 6,000 nested blockquotes verbatim", async (_, load) => {
+      const body = ">".repeat(6000);
+      const message = await load(body);
+
+      expect(message.text).toBe(body);
+      expect(message.formatted).toEqual(root([paragraph([body])]));
       expect(() => JSON.stringify(message.toJSON())).not.toThrow();
     });
   });

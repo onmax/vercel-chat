@@ -1,5 +1,4 @@
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
-import type { Root } from "./markdown";
 import { processCardCallbackUrls } from "./callback-url";
 import { cardToFallbackText } from "./cards";
 import { ChannelImpl, deriveChannelId } from "./channel";
@@ -7,6 +6,7 @@ import { ChatBinding, type ChatSingleton } from "./chat-singleton";
 import { fromFullStream } from "./from-full-stream";
 import { type ChatElement, isJSX, toCardElement } from "./jsx-runtime";
 import type { Logger } from "./logger";
+import type { Root } from "./markdown";
 import {
   paragraph,
   parseMarkdown,
@@ -1290,7 +1290,12 @@ export class ThreadImpl<TState = Record<string, unknown>>
         }
         postable = await self.processCallbackUrls(postable);
         await adapter.editMessage(threadId, messageId, postable);
-        return await self.createSentMessage(messageId, postable, threadId, replyTo);
+        return await self.createSentMessage(
+          messageId,
+          postable,
+          threadId,
+          replyTo
+        );
       },
 
       async delete(): Promise<void> {

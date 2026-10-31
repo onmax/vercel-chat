@@ -143,21 +143,14 @@ describe("createMockLogger", () => {
 });
 
 describe("createTestMessage", () => {
-  it("parses text into formatted AST", () => {
+  it("keeps text as one unparsed paragraph", () => {
     const message = createTestMessage("m1", "hello **world**");
     expect(message.text).toBe("hello **world**");
     expect(message.id).toBe("m1");
-    expect(message.formatted).toMatchObject({
-      type: "root",
-      children: [
-        {
-          type: "paragraph",
-          children: [
-            { type: "text", value: "hello " },
-            { type: "strong", children: [{ type: "text", value: "world" }] },
-          ],
-        },
-      ],
+    expect(message.formatted).toEqual({
+      nodes: [["p", {}, "hello **world**"]],
+      frontmatter: {},
+      meta: {},
     });
   });
 });

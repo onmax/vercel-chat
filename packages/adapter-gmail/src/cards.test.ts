@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { cardToGmailText } from "./cards";
 
 describe("Gmail card fallback", () => {
-  it("keeps text and links while omitting callback buttons", () => {
+  it("keeps text and links while omitting callback buttons", async () => {
     expect(
       cardToGmailText({
         type: "card",

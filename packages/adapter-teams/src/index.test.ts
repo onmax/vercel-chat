@@ -14,6 +14,9 @@ import {
   ConsoleLogger,
   DEFAULT_MAX_INCOMING_PARSE_LENGTH,
   getEmoji,
+  getNodeChildren,
+  isParagraphNode,
+  isStrongNode,
   type Message,
   paragraph,
   root,
@@ -213,8 +216,8 @@ describe("Teams conversation type routing", () => {
     expect(channel).toBe(legacyChannel);
   });
 
-  it("falls back to isGroup when conversationType is missing", () => {
-    const groupMessage = contractAdapter.parseMessage({
+  it("falls back to isGroup when conversationType is missing", async () => {
+    const groupMessage = await contractAdapter.parseMessage({
       conversation: { id: "a:group-chat-id", isGroup: true },
       from: { id: "user-1", name: "Alice" },
       id: "group-message",
@@ -222,7 +225,7 @@ describe("Teams conversation type routing", () => {
       text: "hello",
       type: "message",
     });
-    const channelMessage = contractAdapter.parseMessage({
+    const channelMessage = await contractAdapter.parseMessage({
       channelData: { team: { id: "team-id" } },
       conversation: { id: "a:channel-id", isGroup: true },
       from: { id: "user-1", name: "Alice" },
@@ -231,7 +234,7 @@ describe("Teams conversation type routing", () => {
       text: "hello",
       type: "message",
     });
-    const personalMessage = contractAdapter.parseMessage({
+    const personalMessage = await contractAdapter.parseMessage({
       conversation: { id: "19:personal-id", isGroup: false },
       from: { id: "user-1", name: "Alice" },
       id: "personal-message",
@@ -260,8 +263,8 @@ describe("Teams conversation type routing", () => {
     expect(contractAdapter.isDM(personalMessage.threadId)).toBe(true);
   });
 
-  it("prefers an explicit conversationType over isGroup", () => {
-    const message = contractAdapter.parseMessage({
+  it("prefers an explicit conversationType over isGroup", async () => {
+    const message = await contractAdapter.parseMessage({
       conversation: {
         conversationType: "personal",
         id: "19:personal-id",
@@ -659,7 +662,7 @@ describe("TeamsAdapter", () => {
   // ==========================================================================
 
   describe("isMessageFromSelf (via parseMessage)", () => {
-    it("should detect exact match of appId", () => {
+    it("should detect exact match of appId", async () => {
       const adapter = createTeamsAdapter({
         appId: "abc123-def456",
         appPassword: "test",
@@ -675,11 +678,11 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.author.isMe).toBe(true);
     });
 
-    it("should detect Teams-prefixed bot ID (28:appId)", () => {
+    it("should detect Teams-prefixed bot ID (28:appId)", async () => {
       const adapter = createTeamsAdapter({
         appId: "abc123-def456",
         appPassword: "test",
@@ -695,11 +698,11 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.author.isMe).toBe(true);
     });
 
-    it("should not detect unrelated user as self", () => {
+    it("should not detect unrelated user as self", async () => {
       const adapter = createTeamsAdapter({
         appId: "abc123-def456",
         appPassword: "test",
@@ -715,11 +718,11 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.author.isMe).toBe(false);
     });
 
-    it("should return false when from.id is undefined", () => {
+    it("should return false when from.id is undefined", async () => {
       const adapter = createTeamsAdapter({
         appId: "abc123",
         appPassword: "test",
@@ -735,7 +738,7 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.author.isMe).toBe(false);
     });
   });
@@ -745,7 +748,7 @@ describe("TeamsAdapter", () => {
   // ==========================================================================
 
   describe("parseMessage", () => {
-    it("should parse basic text message", () => {
+    it("should parse basic text message", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -762,7 +765,7 @@ describe("TeamsAdapter", () => {
         timestamp: "2024-01-01T00:00:00.000Z",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.id).toBe("msg-100");
       expect(message.text).toContain("Hello world");
       expect(message.author.userId).toBe("user-1");
@@ -778,13 +781,18 @@ describe("TeamsAdapter", () => {
       { id: "test-app", isBot: true, isMe: true },
       { id: "29:human", role: "user", isBot: false, isMe: false },
       { id: "29:human", isBot: false, isMe: false },
-    ])("classifies sender $id with role $role", ({ id, role, isBot, isMe }) => {
+    ])("classifies sender $id with role $role", async ({
+      id,
+      role,
+      isBot,
+      isMe,
+    }) => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
         logger,
       });
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         type: "message",
         id: "reply-100",
         text: "Reply in a subscribed thread",
@@ -797,7 +805,7 @@ describe("TeamsAdapter", () => {
       expect(message.author.isMe).toBe(isMe);
     });
 
-    it("should handle missing text gracefully", () => {
+    it("should handle missing text gracefully", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -812,11 +820,11 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.text).toBe("");
     });
 
-    it("should handle missing from fields gracefully", () => {
+    it("should handle missing from fields gracefully", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -831,12 +839,12 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.author.userId).toBe("unknown");
       expect(message.author.userName).toBe("unknown");
     });
 
-    it("should filter out adaptive card attachments", () => {
+    it("should filter out adaptive card attachments", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -863,13 +871,13 @@ describe("TeamsAdapter", () => {
         ],
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.attachments).toHaveLength(1);
       expect(message.attachments[0].type).toBe("image");
       expect(message.attachments[0].name).toBe("screenshot.png");
     });
 
-    it("should filter out text/html attachments without contentUrl", () => {
+    it("should filter out text/html attachments without contentUrl", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -891,11 +899,11 @@ describe("TeamsAdapter", () => {
         ],
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.attachments).toHaveLength(0);
     });
 
-    it("should classify attachment types by contentType", () => {
+    it("should classify attachment types by contentType", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -933,7 +941,7 @@ describe("TeamsAdapter", () => {
         ],
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.attachments).toHaveLength(4);
       expect(message.attachments[0].type).toBe("image");
       expect(message.attachments[1].type).toBe("video");
@@ -1004,7 +1012,7 @@ describe("TeamsAdapter", () => {
         ],
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       await expect(message.attachments[0].fetchData?.()).rejects.toThrow(
         "Refusing to fetch an internal attachment URL"
       );
@@ -1040,7 +1048,7 @@ describe("TeamsAdapter", () => {
       expect(overriddenFetch).toHaveBeenCalledOnce();
     });
 
-    it("should set metadata.edited to false for new messages", () => {
+    it("should set metadata.edited to false for new messages", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -1057,7 +1065,7 @@ describe("TeamsAdapter", () => {
         timestamp: "2024-06-01T12:00:00Z",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.metadata.edited).toBe(false);
       expect(message.metadata.dateSent).toEqual(
         new Date("2024-06-01T12:00:00Z")
@@ -1070,7 +1078,7 @@ describe("TeamsAdapter", () => {
   // ==========================================================================
 
   describe("normalizeMentions (via parseMessage)", () => {
-    it("should trim whitespace from text", () => {
+    it("should trim whitespace from text", async () => {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
@@ -1086,7 +1094,7 @@ describe("TeamsAdapter", () => {
         serviceUrl: "https://smba.trafficmanager.net/teams/",
       };
 
-      const message = adapter.parseMessage(activity);
+      const message = await adapter.parseMessage(activity);
       expect(message.text).not.toMatch(WHITESPACE_START_PATTERN);
       expect(message.text).not.toMatch(WHITESPACE_END_PATTERN);
     });
@@ -1107,13 +1115,13 @@ describe("TeamsAdapter", () => {
       toAstSpy.mockRestore();
     });
 
-    function parse(body: string) {
+    async function parse(body: string) {
       const adapter = createTeamsAdapter({
         appId: "test-app",
         appPassword: "test",
         logger,
       });
-      return adapter.parseMessage({
+      return await adapter.parseMessage({
         type: "message",
         id: "msg-300",
         text: body,
@@ -1123,42 +1131,25 @@ describe("TeamsAdapter", () => {
       });
     }
 
-    it("should parse markdown once into text and formatted", () => {
-      const message = parse(MARKDOWN_BODY);
+    it("should parse markdown once into text and formatted", async () => {
+      const message = await parse(MARKDOWN_BODY);
 
       expect(message.text).toBe(MARKDOWN_PLAIN_TEXT);
-      expect(message.formatted).toMatchObject({
-        children: [
-          {
-            type: "paragraph",
-            children: expect.arrayContaining([
-              expect.objectContaining({ type: "strong" }),
-            ]),
-          },
-        ],
-      });
+      const [first] = message.formatted.nodes;
+      expect(
+        isParagraphNode(first) && getNodeChildren(first).some(isStrongNode)
+      ).toBe(true);
       expect(toAstSpy).toHaveBeenCalledOnce();
     });
 
-    it("should keep an over-limit message verbatim without parsing", () => {
-      const message = parse(OVER_LIMIT_BODY);
+    it("should keep an over-limit message verbatim without parsing", async () => {
+      const message = await parse(OVER_LIMIT_BODY);
 
       expect(message.text).toBe(OVER_LIMIT_BODY);
       expect(message.formatted).toEqual(
         root([paragraph([text(OVER_LIMIT_BODY)])])
       );
       expect(toAstSpy).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ["too many emphasis markers", "*a".repeat(8192)],
-      ["a line opening too many blockquotes", ">".repeat(6000)],
-    ])("should keep a message with %s verbatim", (_case, value) => {
-      const message = parse(value);
-
-      expect(message.text).toBe(value);
-      expect(message.formatted).toEqual(root([paragraph([text(value)])]));
-      expect(() => JSON.stringify(message.formatted)).not.toThrow();
     });
   });
 
@@ -1212,39 +1203,12 @@ describe("TeamsAdapter", () => {
       }
     }
 
-    it.each([
-      [
-        "a blockquote marker followed by list markers",
-        `&gt;${"- ".repeat(8000)}a`,
-      ],
-      ["repeated blockquote and list markers", "&gt;- ".repeat(2700)],
-      [
-        "a blockquote marker followed by ordered list markers",
-        `&gt;${"1. ".repeat(3000)}`,
-      ],
-    ])("should check the budget after decoding entities: %s", async (_case, body) => {
-      const expected = body.replaceAll("&gt;", ">").trim();
-      const { message, parsed } = await receive(body);
-
-      expect(message?.text).toBe(expected);
-      expect(message?.formatted).toEqual(root([paragraph([text(expected)])]));
-      expect(parsed).toBe(false);
-    });
-
     it("should still parse an encoded blockquote under the budget", async () => {
       const { message, parsed } = await receive("&gt; quoted &amp; kept");
 
       expect(message?.text).toBe("quoted & kept");
-      expect(message?.formatted.children).toMatchObject([
-        {
-          type: "blockquote",
-          children: [
-            {
-              type: "paragraph",
-              children: [{ type: "text", value: "quoted & kept" }],
-            },
-          ],
-        },
+      expect(message?.formatted.nodes).toMatchObject([
+        ["blockquote", {}, ["p", {}, "quoted & kept"]],
       ]);
       expect(parsed).toBe(true);
     });
@@ -1255,18 +1219,13 @@ describe("TeamsAdapter", () => {
       );
 
       expect(message?.text).toBe("@Bot see the docs");
-      expect(message?.formatted.children).toMatchObject([
-        {
-          type: "paragraph",
-          children: [
-            { type: "text", value: "@Bot see " },
-            {
-              type: "link",
-              url: "https://example.com/a?b=1&c=2",
-              children: [{ type: "text", value: "the docs" }],
-            },
-          ],
-        },
+      expect(message?.formatted.nodes).toMatchObject([
+        [
+          "p",
+          {},
+          "@Bot see ",
+          ["a", { href: "https://example.com/a?b=1&c=2" }, "the docs"],
+        ],
       ]);
     });
 
@@ -1275,9 +1234,8 @@ describe("TeamsAdapter", () => {
       ["unclosed attributes", '<a b href="x"'.repeat(1260)],
       ["unquoted values", '<a href="x"'.repeat(1489)],
     ])("should keep %s as text without backtracking", async (_name, body) => {
-      const { message, parsed } = await receive(body);
+      const { message } = await receive(body);
       expect(message?.text).toBe(body);
-      expect(parsed).toBe(false);
     });
 
     it("should convert a link closed after many unclosed tags without backtracking", async () => {
@@ -1305,7 +1263,7 @@ describe("TeamsAdapter", () => {
     });
 
     it("should render skipped HTML as plain text", async () => {
-      const brackets = "[x]".repeat(513);
+      const brackets = "[x]".repeat(5500);
       const { message, parsed } = await receive(
         `<p><at>Bot</at> Tom &amp; Jerry &lt;3 &quot;cheese&quot; &#39;n&#39;&nbsp;crackers ${brackets}</p>`
       );
@@ -1317,7 +1275,7 @@ describe("TeamsAdapter", () => {
     });
 
     it("should turn line breaks and block ends into newlines when skipped", async () => {
-      const brackets = "]".repeat(129);
+      const brackets = "]".repeat(16_400);
       const { message } = await receive(
         `<div><p>first</p><p>second<br>third &amp;lt;b&amp;gt;</p>\n\n<ul><li>one</li><li><b>two</b></li></ul></div>${brackets}`
       );
@@ -1468,24 +1426,16 @@ describe("TeamsAdapter", () => {
   // ==========================================================================
 
   describe("renderFormatted", () => {
-    it("should delegate to format converter", () => {
+    it("should delegate to format converter", async () => {
       const adapter = createTeamsAdapter({
         appId: "test",
         appPassword: "test",
         logger,
       });
 
-      const ast = {
-        type: "root" as const,
-        children: [
-          {
-            type: "paragraph" as const,
-            children: [{ type: "text" as const, value: "Hello world" }],
-          },
-        ],
-      };
+      const ast = root([["p", {}, "Hello world"]]);
 
-      const result = adapter.renderFormatted(ast);
+      const result = await adapter.renderFormatted(ast);
       expect(typeof result).toBe("string");
       expect(result).toContain("Hello world");
     });

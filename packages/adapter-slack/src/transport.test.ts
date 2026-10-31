@@ -204,7 +204,9 @@ describe("outbound transports", () => {
       .fn<AttachmentTransport>()
       .mockImplementation(async () => incomingMessage());
     const adapter = createSlackAdapter({ fileTransport, logger: mockLogger });
-    await adapter.parseMessage(fileMessageEvent).attachments?.[0].fetchData?.();
+    await (
+      await adapter.parseMessage(fileMessageEvent)
+    ).attachments?.[0].fetchData?.();
     expect(fileTransport.mock.calls[0][2]).toMatchObject({
       authorization: "Bearer xoxb-env",
     });
@@ -223,7 +225,8 @@ describe("outbound transports", () => {
       .fn<AttachmentTransport>()
       .mockImplementation(async () => incomingMessage());
     const adapter = create({ ...auth, fileTransport });
-    const attachment = adapter.parseMessage(fileMessageEvent).attachments?.[0];
+    const attachment = (await adapter.parseMessage(fileMessageEvent))
+      .attachments?.[0];
     expect(attachment).toBeDefined();
     expect(fileTransport).not.toHaveBeenCalled();
     expect(await attachment?.fetchData?.()).toEqual(Buffer.from("file"));
@@ -254,7 +257,9 @@ describe("outbound transports", () => {
       }
     }
     const adapter = new CustomAdapter({ ...auth, fileTransport });
-    await adapter.parseMessage(fileMessageEvent).attachments?.[0].fetchData?.();
+    await (
+      await adapter.parseMessage(fileMessageEvent)
+    ).attachments?.[0].fetchData?.();
     expect(subclassTransport).toHaveBeenCalledOnce();
     expect(fileTransport).not.toHaveBeenCalled();
   });
@@ -270,7 +275,9 @@ describe("outbound transports", () => {
       )
       .mockResolvedValueOnce(incomingMessage());
     const adapter = createSlackAdapter({ ...auth, fileTransport });
-    await adapter.parseMessage(fileMessageEvent).attachments?.[0].fetchData?.();
+    await (
+      await adapter.parseMessage(fileMessageEvent)
+    ).attachments?.[0].fetchData?.();
     expect(fileTransport.mock.calls[0][2]).toHaveProperty(
       "authorization",
       "Bearer xoxb-test"
@@ -286,7 +293,9 @@ describe("outbound transports", () => {
       })
     );
     await expect(
-      adapter.parseMessage(fileMessageEvent).attachments?.[0].fetchData?.()
+      (
+        await adapter.parseMessage(fileMessageEvent)
+      ).attachments?.[0].fetchData?.()
     ).rejects.toThrow();
     expect(fileTransport).toHaveBeenCalledOnce();
   });
@@ -294,7 +303,7 @@ describe("outbound transports", () => {
   it.each([
     [
       "HTML login",
-      () =>
+      async () =>
         incomingMessage(Buffer.from("login"), {
           headers: { "content-type": "text/html" },
         }),
@@ -316,12 +325,14 @@ describe("outbound transports", () => {
       fileTransport: async () => result(),
     });
     await expect(
-      adapter.parseMessage(fileMessageEvent).attachments?.[0].fetchData?.()
+      (
+        await adapter.parseMessage(fileMessageEvent)
+      ).attachments?.[0].fetchData?.()
     ).rejects.toThrow();
   });
 
   it.each([
-    ["never responds", () => new Promise<never>(() => undefined)],
+    ["never responds", async () => new Promise<never>(() => undefined)],
     [
       "stalls the body",
       async () => incomingMessage(new Readable({ read() {} })),
@@ -333,7 +344,9 @@ describe("outbound transports", () => {
       .mockImplementation(() => timeout(20));
     const adapter = createSlackAdapter({ ...auth, fileTransport });
     await expect(
-      adapter.parseMessage(fileMessageEvent).attachments?.[0].fetchData?.()
+      (
+        await adapter.parseMessage(fileMessageEvent)
+      ).attachments?.[0].fetchData?.()
     ).rejects.toThrow("Timed out fetching the attachment");
     expect(timeoutSpy).toHaveBeenCalledWith(30_000);
   });

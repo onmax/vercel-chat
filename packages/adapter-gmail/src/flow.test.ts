@@ -13,7 +13,7 @@ const service = "push@project.iam.gserviceaccount.com";
 const label = "Label_123";
 
 describe("Gmail authenticated delivery through Chat", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllGlobals();
   });
 

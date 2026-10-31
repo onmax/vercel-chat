@@ -14,6 +14,7 @@
 import {
   BaseFormatConverter,
   type Content,
+  codeBlock,
   isTableNode,
   parseMarkdown,
   type Root,
@@ -30,26 +31,17 @@ export class XchatFormatConverter extends BaseFormatConverter {
    * one exception: tables are converted to ASCII art in code blocks since
    * raw GFM table syntax is unreadable as plain text.
    */
-  fromAst(ast: Root): string {
-    const transformed = walkAst(structuredClone(ast), (node: Content) => {
-      // Tables -> code blocks (ASCII art)
-      if (isTableNode(node)) {
-        return {
-          type: "code" as const,
-          value: tableToAscii(node),
-          lang: undefined,
-        } as Content;
-      }
-      return node;
-    });
-
-    return stringifyMarkdown(transformed).trim();
+  async fromAst(ast: Root): Promise<string> {
+    const transformed = walkAst(ast, (node: Content) =>
+      isTableNode(node) ? codeBlock(tableToAscii(node)) : node
+    );
+    return (await stringifyMarkdown(transformed)).trim();
   }
 
   /**
    * Parse standard markdown into an AST.
    */
-  toAst(markdown: string): Root {
+  toAst(markdown: string): Promise<Root> {
     return parseMarkdown(markdown);
   }
 }

@@ -1,5 +1,5 @@
-import type { Root } from "./markdown";
 import type { Logger } from "./logger";
+import type { Root } from "./markdown";
 import { parseMarkdown, toPlainText } from "./markdown";
 import {
   POSTABLE_OBJECT,

@@ -77,7 +77,7 @@ describe("Gmail primitive boundaries", () => {
     "api",
     "format",
     "webhook",
-  ])("%s keeps source and published types independent of Chat", (entry) => {
+  ])("%s keeps source and published types independent of Chat", async (entry) => {
     expect(() => inspect(resolve(directory, `src/${entry}.ts`))).not.toThrow();
     expect(() =>
       inspect(resolve(directory, `dist/${entry}.d.ts`))

@@ -1587,13 +1587,13 @@ describe("thread helpers", () => {
 
   it("parses raw chat and whisper messages", async () => {
     const { adapter } = await initialized();
-    const chatMessage = adapter.parseMessage({
+    const chatMessage = await adapter.parseMessage({
       event: chatEvent(),
       kind: "chat",
     });
     expect(chatMessage.threadId).toBe(CHAT_THREAD);
 
-    const outbound = adapter.parseMessage({
+    const outbound = await adapter.parseMessage({
       event: whisperEvent({ from_user_id: BOT_ID, to_user_id: VIEWER_ID }),
       kind: "whisper",
     });
@@ -1604,13 +1604,9 @@ describe("thread helpers", () => {
   it("renders formatted content as one line", () => {
     const adapter = createAdapter();
     expect(
-      adapter.renderFormatted({
-        children: [
-          { children: [{ type: "text", value: "one" }], type: "paragraph" },
-          { children: [{ type: "text", value: "two" }], type: "paragraph" },
-        ],
-        type: "root",
-      })
+      adapter.renderFormatted(
+        root([paragraph([text("one")]), paragraph([text("two")])])
+      )
     ).toBe("one two");
   });
 });

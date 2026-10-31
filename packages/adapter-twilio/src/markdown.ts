@@ -2,6 +2,7 @@ import {
   type AdapterPostableMessage,
   BaseFormatConverter,
   type Content,
+  codeBlock,
   isTableNode,
   parseMarkdown,
   type Root,
@@ -11,24 +12,21 @@ import {
 } from "chat";
 
 export class TwilioFormatConverter extends BaseFormatConverter {
-  toAst(text: string): Root {
+  toAst(text: string): Promise<Root> {
     return parseMarkdown(text);
   }
 
-  fromAst(ast: Root): string {
+  async fromAst(ast: Root): Promise<string> {
     const transformed = walkAst(structuredClone(ast), (node: Content) => {
       if (isTableNode(node)) {
-        return {
-          type: "code" as const,
-          value: tableToAscii(node),
-        };
+        return codeBlock(tableToAscii(node));
       }
       return node;
     });
-    return stringifyMarkdown(transformed).trim();
+    return (await stringifyMarkdown(transformed)).trim();
   }
 
-  renderPostable(message: AdapterPostableMessage): string {
+  async renderPostable(message: AdapterPostableMessage): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

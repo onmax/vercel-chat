@@ -581,7 +581,7 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
 
     const threadId = this.threadIdFromActivity(activity);
 
-    const message = this.parseTeamsMessage(activity, threadId);
+    const message = await this.parseTeamsMessage(activity, threadId);
     let user: UserInfo | null = null;
     if (activity.from?.aadObjectId) {
       user = await this.getIncomingUser(
@@ -1004,17 +1004,17 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
     }
   }
 
-  protected parseTeamsMessage(
+  protected async parseTeamsMessage(
     activity: Activity,
     threadId: string
-  ): Message<unknown> {
+  ): Promise<Message<unknown>> {
     const text = (activity as IMessageActivity).text || "";
     const normalizedText = this.normalizeMentions(text);
 
     return new Message({
       id: activity.id || "",
       threadId,
-      ...this.formatConverter.parseIncoming(normalizedText),
+      ...(await this.formatConverter.parseIncoming(normalizedText)),
       raw: activity,
       author: this.authorFromActivity(activity),
       metadata: {
@@ -1325,7 +1325,7 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
 
     // Regular text message
     const text = convertEmojiPlaceholders(
-      this.formatConverter.renderPostable(message),
+      await this.formatConverter.renderPostable(message),
       "teams"
     );
 
@@ -1422,7 +1422,7 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
     }
 
     const text = convertEmojiPlaceholders(
-      this.formatConverter.renderPostable(message),
+      await this.formatConverter.renderPostable(message),
       "teams"
     );
 
@@ -1620,7 +1620,7 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
     }
 
     const text = convertEmojiPlaceholders(
-      this.formatConverter.renderPostable(message),
+      await this.formatConverter.renderPostable(message),
       "teams"
     );
 
@@ -2059,7 +2059,7 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
     }
 
     const text = convertEmojiPlaceholders(
-      this.formatConverter.renderPostable(message),
+      await this.formatConverter.renderPostable(message),
       "teams"
     );
     const activity = new MessageActivity(text);
@@ -2111,7 +2111,7 @@ export class TeamsAdapter implements Adapter<TeamsThreadId, unknown> {
     return decodeThreadId(threadId);
   }
 
-  parseMessage(raw: unknown): Message<unknown> {
+  parseMessage(raw: unknown): Promise<Message<unknown>> {
     const activity = raw as Activity;
     const threadId = this.threadIdFromActivity(activity);
     return this.parseTeamsMessage(activity, threadId);

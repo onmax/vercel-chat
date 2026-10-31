@@ -1142,7 +1142,8 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
       id: data.id,
       threadId,
       text: content.text,
-      formatted: this.formatConverter.parseIncoming(content.text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(content.text))
+        .formatted,
       author: {
         userId: data.author.id,
         userName: data.author.username,
@@ -1271,14 +1272,14 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     this.chat.processReaction(reactionEvent);
   }
 
-  protected buildMessagePayload(
+  protected async buildMessagePayload(
     message: AdapterPostableMessage,
     options: { clearContentForCard?: boolean } = {}
-  ): {
+  ): Promise<{
     componentCount: number;
     embedCount: number;
     payload: DiscordMessagePayload;
-  } {
+  }> {
     const payload: DiscordMessagePayload = {};
     const card = extractCard(message);
 
@@ -1318,7 +1319,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
 
     payload.content = this.truncateContent(
       convertEmojiPlaceholders(
-        this.formatConverter.renderPostable(message),
+        await this.formatConverter.renderPostable(message),
         "discord"
       )
     );
@@ -1409,7 +1410,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     );
 
     const { componentCount, embedCount, payload } =
-      this.buildMessagePayload(message);
+      await this.buildMessagePayload(message);
 
     // Handle file uploads
     const files = extractFiles(message);
@@ -1734,7 +1735,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     messageId: string,
     message: AdapterPostableMessage
   ): Promise<RawMessage<unknown>> {
-    const { payload } = this.buildMessagePayload(message, {
+    const { payload } = await this.buildMessagePayload(message, {
       clearContentForCard: true,
     });
 
@@ -1996,8 +1997,8 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     // For consistency, reverse to chronological order (oldest first)
     const sortedMessages = [...rawMessages].reverse();
 
-    const messages = sortedMessages.map((msg) =>
-      this.parseDiscordMessage(msg, threadId)
+    const messages = await Promise.all(
+      sortedMessages.map((msg) => this.parseDiscordMessage(msg, threadId))
     );
 
     // Determine next cursor
@@ -2122,7 +2123,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
   /**
    * Parse a Discord message into normalized format.
    */
-  parseMessage(raw: unknown): Message<unknown> {
+  async parseMessage(raw: unknown): Promise<Message<unknown>> {
     const msg = raw as APIMessage & { guild_id?: string };
     const guildId = msg.guild_id || "@me";
     const threadId = this.encodeThreadId({
@@ -2135,10 +2136,10 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
   /**
    * Parse a Discord API message into normalized format.
    */
-  protected parseDiscordMessage(
+  protected async parseDiscordMessage(
     raw: APIMessage,
     threadId: string
-  ): Message<unknown> {
+  ): Promise<Message<unknown>> {
     // use original message instead of empty thread starter message if available
     const msg =
       raw.type === MessageType.ThreadStarterMessage && raw.referenced_message
@@ -2157,7 +2158,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     return new Message({
       id: msg.id,
       threadId,
-      ...this.formatConverter.parseIncoming(content.text),
+      ...(await this.formatConverter.parseIncoming(content.text)),
       raw,
       author: {
         userId: author.id,
@@ -2832,7 +2833,8 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
       id: message.id,
       threadId,
       text: content.text,
-      formatted: this.formatConverter.parseIncoming(content.text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(content.text))
+        .formatted,
       author: {
         userId: message.author.id,
         userName: message.author.username,
@@ -3015,8 +3017,8 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
     // Discord returns newest first, reverse for chronological order
     const sortedMessages = [...rawMessages].reverse();
 
-    const messages = sortedMessages.map((msg) =>
-      this.parseDiscordMessage(msg, channelId)
+    const messages = await Promise.all(
+      sortedMessages.map((msg) => this.parseDiscordMessage(msg, channelId))
     );
 
     let nextCursor: string | undefined;
@@ -3122,7 +3124,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
         if (rootMsg) {
           threads.push({
             id: threadId,
-            rootMessage: this.parseDiscordMessage(rootMsg, threadId),
+            rootMessage: await this.parseDiscordMessage(rootMsg, threadId),
             replyCount: thread.total_message_sent ?? thread.message_count,
             lastReplyAt: thread.thread_metadata?.archive_timestamp
               ? new Date(thread.thread_metadata.archive_timestamp)
@@ -3137,8 +3139,9 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
             id: thread.id,
             threadId,
             text: thread.name ?? "",
-            formatted: this.formatConverter.parseIncoming(thread.name ?? "")
-              .formatted,
+            formatted: (
+              await this.formatConverter.parseIncoming(thread.name ?? "")
+            ).formatted,
             raw: thread,
             author: {
               userId: "unknown",
@@ -3218,7 +3221,7 @@ export class DiscordAdapter implements Adapter<DiscordThreadId, unknown> {
       );
     }
 
-    const { payload } = this.buildMessagePayload(message);
+    const { payload } = await this.buildMessagePayload(message);
 
     const files = extractFiles(message);
     this.addComponentsV2FileReferences(payload, files);

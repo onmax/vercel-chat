@@ -16,6 +16,8 @@ import {
   BaseFormatConverter,
   type Content,
   getNodeChildren,
+  getNodeTag,
+  getNodeValue,
   isBlockquoteNode,
   isCodeNode,
   isDeleteNode,
@@ -43,20 +45,8 @@ export class GoogleChatFormatConverter extends BaseFormatConverter {
   /**
    * Parse Google Chat message into an AST.
    */
-  toAst(gchatText: string): Root {
+  toAst(gchatText: string): Promise<Root> {
     return parseMarkdown(this.toStandardMarkdown(gchatText));
-  }
-
-  /**
-   * Check the budget against the markdown that `toAst` parses, after Google
-   * Chat bold and strikethrough are converted. The length limit still applies
-   * to the text as delivered.
-   */
-  protected override exceedsIncomingBudget(gchatText: string): boolean {
-    return (
-      gchatText.length > this.maxIncomingParseLength ||
-      super.exceedsIncomingBudget(this.toStandardMarkdown(gchatText))
-    );
   }
 
   /**
@@ -88,7 +78,7 @@ export class GoogleChatFormatConverter extends BaseFormatConverter {
       // Google Chat: @mentions are passed through as-is
       // To create clickable mentions in Google Chat, you'd need to use <users/{user_id}> format
       // which requires user ID lookup - beyond the scope of format conversion
-      return node.value;
+      return node;
     }
 
     if (isStrongNode(node)) {
@@ -116,11 +106,11 @@ export class GoogleChatFormatConverter extends BaseFormatConverter {
     }
 
     if (isInlineCodeNode(node)) {
-      return `\`${node.value}\``;
+      return `\`${getNodeValue(node)}\``;
     }
 
     if (isCodeNode(node)) {
-      return `\`\`\`\n${node.value}\n\`\`\``;
+      return `\`\`\`\n${getNodeValue(node)}\n\`\`\``;
     }
 
     if (isLinkNode(node)) {
@@ -128,20 +118,21 @@ export class GoogleChatFormatConverter extends BaseFormatConverter {
       const linkText = getNodeChildren(node)
         .map((child) => this.nodeToGChat(child))
         .join("");
-      if (linkText === node.url) {
-        return node.url;
+      const url = node[1].href;
+      if (linkText === url) {
+        return url;
       }
       const collapsibleSchemes = ["mailto:", "tel:"];
       for (const scheme of collapsibleSchemes) {
-        if (!node.url.startsWith(scheme)) {
+        if (!url.startsWith(scheme)) {
           continue;
         }
-        const bareValue = node.url.slice(scheme.length);
+        const bareValue = url.slice(scheme.length);
         if (bareValue === linkText) {
           return bareValue;
         }
       }
-      return `<${node.url}|${linkText}>`;
+      return `<${url}|${linkText}>`;
     }
 
     if (isBlockquoteNode(node)) {
@@ -155,11 +146,11 @@ export class GoogleChatFormatConverter extends BaseFormatConverter {
       return this.renderList(node, 0, (child) => this.nodeToGChat(child), "•");
     }
 
-    if (node.type === "break") {
+    if (getNodeTag(node) === "br") {
       return "\n";
     }
 
-    if (node.type === "thematicBreak") {
+    if (getNodeTag(node) === "hr") {
       return "---";
     }
 

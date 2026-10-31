@@ -2,7 +2,7 @@
  * Notion comment format conversion.
  *
  * Outbound: prefer Notion's native `markdown` body parameter (inline subset).
- * Inbound: map rich-text spans → mdast via plain_text concatenation for M1;
+ * Inbound: map rich-text spans → AST via plain_text concatenation for M1;
  * richer AST mapping lands in M2.
  */
 
@@ -27,11 +27,11 @@ const TABLE_SEPARATOR = /^\|[-:| ]+$/gm;
 const TABLE_ROW = /^\|(.+)\|$/gm;
 
 export class NotionFormatConverter extends BaseFormatConverter {
-  fromAst(ast: Root): string {
-    return stringifyMarkdown(ast).trim();
+  async fromAst(ast: Root): Promise<string> {
+    return (await stringifyMarkdown(ast)).trim();
   }
 
-  toAst(markdown: string): Root {
+  toAst(markdown: string): Promise<Root> {
     return parseMarkdown(markdown);
   }
 
@@ -76,7 +76,9 @@ export class NotionFormatConverter extends BaseFormatConverter {
     return parts.join("");
   }
 
-  override renderPostable(message: AdapterPostableMessage): string {
+  override async renderPostable(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return this.normalizeCommentMarkdown(message);
     }
@@ -84,12 +86,14 @@ export class NotionFormatConverter extends BaseFormatConverter {
       return this.normalizeCommentMarkdown(message.raw);
     }
     if ("markdown" in message) {
-      return this.normalizeCommentMarkdown(this.fromMarkdown(message.markdown));
+      return this.normalizeCommentMarkdown(
+        await this.fromMarkdown(message.markdown)
+      );
     }
     if ("ast" in message) {
-      return this.normalizeCommentMarkdown(this.fromAst(message.ast));
+      return this.normalizeCommentMarkdown(await this.fromAst(message.ast));
     }
-    return this.normalizeCommentMarkdown(super.renderPostable(message));
+    return this.normalizeCommentMarkdown(await super.renderPostable(message));
   }
 
   /**

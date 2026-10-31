@@ -42,11 +42,11 @@ export interface PostableObject<TData = unknown> {
   /** The kind of object - used by adapters to dispatch */
   readonly kind: string;
 
-  /** Called before posting, to finish any async setup such as parsing markdown */
-  prepare?(): Promise<void>;
-
   /** Called after successful posting to bind the object to the thread */
   onPosted(context: PostableObjectContext): void;
+
+  /** Called before posting, to finish any async setup such as parsing markdown */
+  prepare?(): Promise<void>;
 }
 
 /**

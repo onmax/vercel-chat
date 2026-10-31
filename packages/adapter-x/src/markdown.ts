@@ -3,6 +3,7 @@ import {
   type CardElement,
   type Content,
   getNodeChildren,
+  getNodeTag,
   getNodeValue,
   isCodeNode,
   isLinkNode,
@@ -30,7 +31,12 @@ const BLOCK_SEPARATOR = /\n{2,}/;
  * plain text.
  */
 export class XFormatConverter extends BaseFormatConverter {
-  toAst(platformText: string): Root {
+  async toAst(platformText: string): Promise<Root> {
+    return this.plainTextToAst(platformText);
+  }
+
+  /** Parse plain post/DM text into paragraphs with link nodes. */
+  plainTextToAst(platformText: string): Root {
     const blocks = platformText.split(BLOCK_SEPARATOR);
     const paragraphs = blocks
       .filter((block) => block.length > 0)
@@ -54,7 +60,8 @@ export class XFormatConverter extends BaseFormatConverter {
       const label = getNodeChildren(node)
         .map((child) => this.nodeToText(child))
         .join("");
-      return label && label !== node.url ? `${label} (${node.url})` : node.url;
+      const url = node[1].href;
+      return label && label !== url ? `${label} (${url})` : url;
     }
     if (isCodeNode(node)) {
       return getNodeValue(node);
@@ -65,10 +72,10 @@ export class XFormatConverter extends BaseFormatConverter {
     if (isTableNode(node)) {
       return tableToAscii(node);
     }
-    if (node.type === "break") {
+    if (getNodeTag(node) === "br") {
       return "\n";
     }
-    if (node.type === "thematicBreak") {
+    if (getNodeTag(node) === "hr") {
       return "---";
     }
     return this.defaultNodeToText(node, (child) => this.nodeToText(child));
