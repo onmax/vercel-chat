@@ -1,5 +1,5 @@
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
-import type { Root } from "mdast";
+import type { Root } from "./markdown";
 import { processCardCallbackUrls } from "./callback-url";
 import { cardToFallbackText } from "./cards";
 import { ChannelImpl, deriveChannelId } from "./channel";
@@ -566,7 +566,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
     }
 
     // Create a SentMessage with edit/delete capabilities
-    const result = this.createSentMessage(
+    const result = await this.createSentMessage(
       rawMessage.id,
       postable,
       rawMessage.threadId
@@ -694,7 +694,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
     postable = await this.processCallbackUrls(postable);
     const targetId = typeof target === "string" ? target : target.id;
     const rawMessage = await this.adapter.reply(this.id, targetId, postable);
-    const result = this.createSentMessage(
+    const result = await this.createSentMessage(
       rawMessage.id,
       postable,
       rawMessage.threadId,
@@ -856,7 +856,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
       }
       if (raw) {
         this._typingStarted = false;
-        const sent = this.createSentMessage(
+        const sent = await this.createSentMessage(
           raw.id,
           withAiGenerated({ markdown: accumulated }, options),
           raw.threadId
@@ -1124,7 +1124,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
       );
     }
 
-    const sent = this.createSentMessage(
+    const sent = await this.createSentMessage(
       msg.id,
       withAiGenerated({ markdown: accumulated }, options),
       threadIdForEdits
@@ -1235,12 +1235,12 @@ export class ThreadImpl<TState = Record<string, unknown>>
     return ThreadImpl.fromJSON(data);
   }
 
-  private createSentMessage(
+  private async createSentMessage(
     messageId: string,
     postable: AdapterPostableMessage,
     threadIdOverride?: string,
     replyTo?: Message
-  ): SentMessage {
+  ): Promise<SentMessage> {
     const adapter = this.adapter;
     // Use the threadId returned by postMessage if available (may differ after thread creation)
     const threadId = threadIdOverride || this.id;
@@ -1248,7 +1248,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
 
     // Extract text and AST from the PostableMessage
     const { plainText, formatted, attachments } =
-      extractMessageContent(postable);
+      await extractMessageContent(postable);
 
     const sentMessage: SentMessage = {
       id: messageId,
@@ -1290,7 +1290,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
         }
         postable = await self.processCallbackUrls(postable);
         await adapter.editMessage(threadId, messageId, postable);
-        return self.createSentMessage(messageId, postable, threadId, replyTo);
+        return await self.createSentMessage(messageId, postable, threadId, replyTo);
       },
 
       async delete(): Promise<void> {
@@ -1347,7 +1347,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
         }
         postable = await self.processCallbackUrls(postable);
         await adapter.editMessage(threadId, messageId, postable);
-        return self.createSentMessage(
+        return await self.createSentMessage(
           messageId,
           postable,
           threadId,
@@ -1373,11 +1373,11 @@ export class ThreadImpl<TState = Record<string, unknown>>
 /**
  * Extract plain text, AST, and attachments from a message.
  */
-function extractMessageContent(message: AdapterPostableMessage): {
+async function extractMessageContent(message: AdapterPostableMessage): Promise<{
   plainText: string;
   formatted: Root;
   attachments: Attachment[];
-} {
+}> {
   if (typeof message === "string") {
     // Raw string - create simple AST
     return {
@@ -1398,7 +1398,7 @@ function extractMessageContent(message: AdapterPostableMessage): {
 
   if ("markdown" in message) {
     // Markdown - parse to AST
-    const ast = parseMarkdown(message.markdown);
+    const ast = await parseMarkdown(message.markdown);
     return {
       plainText: toPlainText(ast),
       formatted: ast,

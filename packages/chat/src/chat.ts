@@ -7,6 +7,7 @@ import {
   restoreCallbackToken,
 } from "./callback-url";
 import { ChannelImpl, type SerializedChannel } from "./channel";
+import { root } from "./markdown";
 import {
   getChatSingleton,
   hasChatSingleton,
@@ -2018,7 +2019,7 @@ export class Chat<
           id: event.messageId,
           threadId: event.threadId,
           text: "",
-          formatted: { type: "root", children: [] },
+          formatted: root([]),
           raw: event.raw,
           author: event.user,
           metadata: { dateSent: new Date(), edited: false },

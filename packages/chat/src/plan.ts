@@ -1,4 +1,4 @@
-import type { Root } from "mdast";
+import type { Root } from "./markdown";
 import type { Logger } from "./logger";
 import { parseMarkdown, toPlainText } from "./markdown";
 import {
@@ -75,7 +75,9 @@ export interface CompletePlanOptions {
 /**
  * Convert PlanContent to plain text for titles/labels.
  */
-function contentToPlainText(content: PlanContent | undefined): string {
+async function contentToPlainText(
+  content: PlanContent | undefined
+): Promise<string> {
   if (!content) {
     return "";
   }
@@ -86,7 +88,7 @@ function contentToPlainText(content: PlanContent | undefined): string {
     return content;
   }
   if ("markdown" in content) {
-    return toPlainText(parseMarkdown(content.markdown));
+    return toPlainText(await parseMarkdown(content.markdown));
   }
   if ("ast" in content) {
     return toPlainText(content.ast);
@@ -125,15 +127,25 @@ export class Plan implements PostableObject<PlanModel> {
 
   private _model: PlanModel;
   private _bound: BoundState | null = null;
+  private readonly _ready: Promise<void>;
 
   constructor(options: StartPlanOptions) {
-    const title = contentToPlainText(options.initialMessage) || "Plan";
     const firstTask: PlanModelTask = {
       id: crypto.randomUUID(),
-      title,
+      title: "Plan",
       status: "in_progress",
     };
-    this._model = { title, tasks: [firstTask] };
+    this._model = { title: "Plan", tasks: [firstTask] };
+    this._ready = contentToPlainText(options.initialMessage).then((title) => {
+      if (title) {
+        this._model.title = title;
+        firstTask.title = title;
+      }
+    });
+  }
+
+  prepare(): Promise<void> {
+    return this._ready;
   }
 
   isSupported(adapter: Adapter): boolean {
@@ -205,7 +217,7 @@ export class Plan implements PostableObject<PlanModel> {
     if (!this.canMutate()) {
       return null;
     }
-    const title = contentToPlainText(options.title) || "Task";
+    const title = (await contentToPlainText(options.title)) || "Task";
     const autoCompletePrevious = options.autoCompletePrevious ?? true;
     if (autoCompletePrevious) {
       for (const task of this._model.tasks) {
@@ -273,7 +285,7 @@ export class Plan implements PostableObject<PlanModel> {
       return null;
     }
 
-    const title = contentToPlainText(options.initialMessage) || "Plan";
+    const title = (await contentToPlainText(options.initialMessage)) || "Plan";
     const firstTask: PlanModelTask = {
       id: crypto.randomUUID(),
       title,
@@ -299,7 +311,7 @@ export class Plan implements PostableObject<PlanModel> {
       }
     }
     this._model.title =
-      contentToPlainText(options.completeMessage) || this._model.title;
+      (await contentToPlainText(options.completeMessage)) || this._model.title;
     await this.enqueueEdit();
   }
 

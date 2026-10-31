@@ -1,4 +1,4 @@
-import remend from "remend";
+import { autoCloseMarkdown as remend } from "comark";
 
 interface StreamingMarkdownRendererOptions {
   /**
