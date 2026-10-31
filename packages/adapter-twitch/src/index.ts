@@ -490,11 +490,11 @@ export class TwitchAdapter
 
     if (decoded.kind === "whisper") {
       const limit = await this.whisperLimit(decoded.userId);
-      const text = this.renderOutbound(message, limit);
+      const text = await this.renderOutbound(message, limit);
       return await this.sendWhisper(threadId, decoded.userId, text);
     }
 
-    const text = this.renderOutbound(message, CHAT_MESSAGE_LIMIT);
+    const text = await this.renderOutbound(message, CHAT_MESSAGE_LIMIT);
     return await this.sendChatMessage(
       threadId,
       decoded.broadcasterUserId,
@@ -862,7 +862,9 @@ export class TwitchAdapter
     return threadId;
   }
 
-  parseMessage(raw: TwitchRawMessage): Message<TwitchRawMessage> {
+  async parseMessage(
+    raw: TwitchRawMessage
+  ): Promise<Message<TwitchRawMessage>> {
     if (raw.kind === "whisper") {
       const userId = this.isBotUser(raw.event.from_user_id)
         ? raw.event.to_user_id
@@ -949,14 +951,14 @@ export class TwitchAdapter
     return subscription;
   }
 
-  protected renderOutbound(
+  protected async renderOutbound(
     message: AdapterPostableMessage,
     limit: number
-  ): string {
+  ): Promise<string> {
     const card = extractCard(message);
     const rendered = card
       ? cardToTwitchText(card)
-      : this.formatConverter.renderPostable(message);
+      : await this.formatConverter.renderPostable(message);
     const text = toSingleLine(convertEmojiPlaceholders(rendered, "gchat"));
     if (!text) {
       throw new ValidationError("twitch", "Message text cannot be empty");
@@ -979,7 +981,7 @@ export class TwitchAdapter
         event.chatter_user_name,
         isMe
       ),
-      formatted: this.formatConverter.toAst(text),
+      formatted: this.formatConverter.plainTextToAst(text),
       id: event.message_id,
       // Structured mentions and replies to the bot are definite. Otherwise
       // leave it undetermined so the SDK can still match @login in the text.
@@ -1028,7 +1030,7 @@ export class TwitchAdapter
         reply.parent_user_name,
         this.isBotUser(reply.parent_user_id)
       ),
-      formatted: this.formatConverter.toAst(text),
+      formatted: this.formatConverter.plainTextToAst(text),
       id: reply.parent_message_id,
       metadata: { dateSent, edited: false },
       raw: parentRaw,
@@ -1052,7 +1054,7 @@ export class TwitchAdapter
         event.from_user_name,
         isMe
       ),
-      formatted: this.formatConverter.toAst(text),
+      formatted: this.formatConverter.plainTextToAst(text),
       id: event.whisper_id,
       metadata: { dateSent: parseTimestamp(raw.receivedAt), edited: false },
       raw,

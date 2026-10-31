@@ -2,7 +2,6 @@
  * Tests for markdown parsing, AST building, and format conversion utilities.
  */
 
-import type { Content, List, Root } from "mdast";
 import { describe, expect, it, vi } from "vitest";
 import {
   Actions,
@@ -18,10 +17,12 @@ import {
 import {
   BaseFormatConverter,
   blockquote,
+  type Content,
   codeBlock,
   DEFAULT_MAX_INCOMING_PARSE_LENGTH,
   emphasis,
   getNodeChildren,
+  getNodeTag,
   getNodeValue,
   inlineCode,
   isBlockquoteNode,
@@ -38,14 +39,17 @@ import {
   isTableNode,
   isTableRowNode,
   isTextNode,
+  type List,
   link,
   markdownToPlainText,
   paragraph,
   parseMarkdown,
+  type Root,
   root,
   strikethrough,
   stringifyMarkdown,
   strong,
+  type Table as TableNode,
   tableElementToAscii,
   tableToAscii,
   text,
@@ -57,98 +61,97 @@ import { TextInput } from "./modals";
 const BOT_MENTION_WITH_WHITESPACE_REGEX = /@test-bot\s+hi there/;
 const LIST_ITEMS_WITH_WHITESPACE_REGEX = /one\s+two/;
 
+const childTags = (node: Content | undefined): (string | undefined)[] =>
+  node === undefined ? [] : getNodeChildren(node).map(getNodeTag);
+
 // ============================================================================
 // parseMarkdown Tests
 // ============================================================================
 
 describe("parseMarkdown", () => {
-  it("parses plain text", () => {
-    const ast = parseMarkdown("Hello, world!");
-    expect(ast.type).toBe("root");
-    expect(ast.children).toHaveLength(1);
-    expect(ast.children[0].type).toBe("paragraph");
+  it("parses plain text", async () => {
+    const ast = await parseMarkdown("Hello, world!");
+    expect(ast.nodes).toHaveLength(1);
+    expect(getNodeTag(ast.nodes[0])).toBe("p");
   });
 
-  it("parses bold text", () => {
-    const ast = parseMarkdown("**bold**");
-    const para = ast.children[0] as { children: Array<{ type: string }> };
-    expect(para.children[0].type).toBe("strong");
+  it("parses bold text", async () => {
+    const ast = await parseMarkdown("**bold**");
+    expect(childTags(ast.nodes[0])).toEqual(["strong"]);
   });
 
-  it("parses italic text", () => {
-    const ast = parseMarkdown("_italic_");
-    const para = ast.children[0] as { children: Array<{ type: string }> };
-    expect(para.children[0].type).toBe("emphasis");
+  it("parses italic text", async () => {
+    const ast = await parseMarkdown("_italic_");
+    expect(childTags(ast.nodes[0])).toEqual(["em"]);
   });
 
-  it("parses strikethrough (GFM)", () => {
-    const ast = parseMarkdown("~~deleted~~");
-    const para = ast.children[0] as { children: Array<{ type: string }> };
-    expect(para.children[0].type).toBe("delete");
+  it("parses strikethrough (GFM)", async () => {
+    const ast = await parseMarkdown("~~deleted~~");
+    expect(childTags(ast.nodes[0])).toEqual(["del"]);
   });
 
-  it("parses inline code", () => {
-    const ast = parseMarkdown("`code`");
-    const para = ast.children[0] as { children: Array<{ type: string }> };
-    expect(para.children[0].type).toBe("inlineCode");
+  it("parses inline code", async () => {
+    const ast = await parseMarkdown("`code`");
+    expect(childTags(ast.nodes[0])).toEqual(["code"]);
   });
 
-  it("parses code blocks", () => {
-    const ast = parseMarkdown("```javascript\nconst x = 1;\n```");
-    expect(ast.children[0].type).toBe("code");
-    const codeNode = ast.children[0] as { lang: string; value: string };
-    expect(codeNode.lang).toBe("javascript");
-    expect(codeNode.value).toBe("const x = 1;");
+  it("parses code blocks", async () => {
+    const ast = await parseMarkdown("```javascript\nconst x = 1;\n```");
+    const codeNode = ast.nodes[0];
+    expect(isCodeNode(codeNode)).toBe(true);
+    expect(isCodeNode(codeNode) && codeNode[1].language).toBe("javascript");
+    expect(getNodeValue(codeNode)).toBe("const x = 1;");
   });
 
-  it("parses links", () => {
-    const ast = parseMarkdown("[text](https://example.com)");
-    const para = ast.children[0] as {
-      children: Array<{ type: string; url?: string }>;
-    };
-    expect(para.children[0].type).toBe("link");
-    expect(para.children[0].url).toBe("https://example.com");
+  it("parses links", async () => {
+    const ast = await parseMarkdown("[text](https://example.com)");
+    const linkNode = getNodeChildren(ast.nodes[0])[0];
+    expect(isLinkNode(linkNode)).toBe(true);
+    expect(isLinkNode(linkNode) && linkNode[1].href).toBe(
+      "https://example.com"
+    );
   });
 
-  it("parses blockquotes", () => {
-    const ast = parseMarkdown("> quoted text");
-    expect(ast.children[0].type).toBe("blockquote");
+  it("parses blockquotes", async () => {
+    const ast = await parseMarkdown("> quoted text");
+    expect(getNodeTag(ast.nodes[0])).toBe("blockquote");
   });
 
-  it("parses unordered lists", () => {
-    const ast = parseMarkdown("- item 1\n- item 2");
-    expect(ast.children[0].type).toBe("list");
-    const list = ast.children[0] as { ordered: boolean };
-    expect(list.ordered).toBe(false);
+  it("parses unordered lists", async () => {
+    const ast = await parseMarkdown("- item 1\n- item 2");
+    expect(getNodeTag(ast.nodes[0])).toBe("ul");
   });
 
-  it("parses ordered lists", () => {
-    const ast = parseMarkdown("1. first\n2. second");
-    expect(ast.children[0].type).toBe("list");
-    const list = ast.children[0] as { ordered: boolean };
-    expect(list.ordered).toBe(true);
+  it("parses ordered lists", async () => {
+    const ast = await parseMarkdown("1. first\n2. second");
+    expect(getNodeTag(ast.nodes[0])).toBe("ol");
   });
 
-  it("handles nested formatting", () => {
-    const ast = parseMarkdown("**_bold italic_**");
-    const para = ast.children[0] as {
-      children: Array<{ type: string; children: Array<{ type: string }> }>;
-    };
-    expect(para.children[0].type).toBe("strong");
-    expect(para.children[0].children[0].type).toBe("emphasis");
+  it("handles nested formatting", async () => {
+    const ast = await parseMarkdown("**_bold italic_**");
+    const strongNode = getNodeChildren(ast.nodes[0])[0];
+    expect(getNodeTag(strongNode)).toBe("strong");
+    expect(childTags(strongNode)).toEqual(["em"]);
   });
 
-  it("handles empty string", () => {
-    const ast = parseMarkdown("");
-    expect(ast.type).toBe("root");
-    expect(ast.children).toHaveLength(0);
+  it("handles empty string", async () => {
+    const ast = await parseMarkdown("");
+    expect(ast.nodes).toHaveLength(0);
   });
 
-  it("handles multiple paragraphs", () => {
-    const ast = parseMarkdown("First paragraph.\n\nSecond paragraph.");
-    expect(ast.children).toHaveLength(2);
-    expect(ast.children[0].type).toBe("paragraph");
-    expect(ast.children[1].type).toBe("paragraph");
+  it("handles multiple paragraphs", async () => {
+    const ast = await parseMarkdown("First paragraph.\n\nSecond paragraph.");
+    expect(ast.nodes.map(getNodeTag)).toEqual(["p", "p"]);
+  });
+
+  it("keeps Comark component and attribute syntax as text", async () => {
+    const ast = await parseMarkdown("price {cheap} and ::not a component");
+    expect(toPlainText(ast)).toBe("price {cheap} and ::not a component");
+  });
+
+  it("does not close unterminated markers", async () => {
+    const ast = await parseMarkdown("**unclosed");
+    expect(ast.nodes).toEqual([["p", {}, "**unclosed"]]);
   });
 });
 
@@ -157,45 +160,45 @@ describe("parseMarkdown", () => {
 // ============================================================================
 
 describe("stringifyMarkdown", () => {
-  it("stringifies a simple AST", () => {
+  it("stringifies a simple AST", async () => {
     const ast = root([paragraph([text("Hello")])]);
-    const result = stringifyMarkdown(ast);
+    const result = await stringifyMarkdown(ast);
     expect(result.trim()).toBe("Hello");
   });
 
-  it("stringifies bold text", () => {
+  it("stringifies bold text", async () => {
     const ast = root([paragraph([strong([text("bold")])])]);
-    const result = stringifyMarkdown(ast);
+    const result = await stringifyMarkdown(ast);
     expect(result.trim()).toBe("**bold**");
   });
 
-  it("stringifies italic text", () => {
+  it("stringifies italic text", async () => {
     const ast = root([paragraph([emphasis([text("italic")])])]);
-    const result = stringifyMarkdown(ast);
+    const result = await stringifyMarkdown(ast);
     expect(result.trim()).toBe("*italic*");
   });
 
-  it("stringifies inline code", () => {
+  it("stringifies inline code", async () => {
     const ast = root([paragraph([inlineCode("code")])]);
-    const result = stringifyMarkdown(ast);
+    const result = await stringifyMarkdown(ast);
     expect(result.trim()).toBe("`code`");
   });
 
-  it("stringifies links", () => {
+  it("stringifies links", async () => {
     const ast = root([
       paragraph([link("https://example.com", [text("link")])]),
     ]);
-    const result = stringifyMarkdown(ast);
+    const result = await stringifyMarkdown(ast);
     expect(result.trim()).toBe("[link](https://example.com)");
   });
 
-  it("round-trips markdown correctly", () => {
+  it("round-trips markdown correctly", async () => {
     const original = "**bold** and _italic_ and `code`";
-    const ast = parseMarkdown(original);
-    const result = stringifyMarkdown(ast);
+    const ast = await parseMarkdown(original);
+    const result = await stringifyMarkdown(ast);
     // Parse again to normalize
-    const reparsed = parseMarkdown(result);
-    expect(reparsed.children.length).toBe(ast.children.length);
+    const reparsed = await parseMarkdown(result);
+    expect(reparsed.nodes).toEqual(ast.nodes);
   });
 });
 
@@ -204,68 +207,57 @@ describe("stringifyMarkdown", () => {
 // ============================================================================
 
 describe("toPlainText", () => {
-  it("extracts plain text from AST", () => {
-    const ast = parseMarkdown("**bold** and _italic_");
-    const result = toPlainText(ast);
-    expect(result).toBe("bold and italic");
+  it("extracts plain text from AST", async () => {
+    const ast = await parseMarkdown("**bold** and _italic_");
+    expect(toPlainText(ast)).toBe("bold and italic");
   });
 
-  it("extracts text from code blocks", () => {
-    const ast = parseMarkdown("```\ncode block\n```");
-    const result = toPlainText(ast);
-    expect(result).toBe("code block");
+  it("extracts text from code blocks", async () => {
+    const ast = await parseMarkdown("```\ncode block\n```");
+    expect(toPlainText(ast)).toBe("code block");
   });
 
-  it("extracts text from links", () => {
-    const ast = parseMarkdown("[link text](https://example.com)");
-    const result = toPlainText(ast);
-    expect(result).toBe("link text");
+  it("extracts text from links", async () => {
+    const ast = await parseMarkdown("[link text](https://example.com)");
+    expect(toPlainText(ast)).toBe("link text");
   });
 
-  it("preserves soft line breaks as whitespace", () => {
-    const ast = parseMarkdown("@test-bot\nhi there");
-    const result = toPlainText(ast);
-    expect(result).toMatch(BOT_MENTION_WITH_WHITESPACE_REGEX);
+  it("preserves soft line breaks as whitespace", async () => {
+    const ast = await parseMarkdown("@test-bot\nhi there");
+    expect(toPlainText(ast)).toMatch(BOT_MENTION_WITH_WHITESPACE_REGEX);
   });
 
-  it("preserves paragraph boundaries as whitespace", () => {
-    const ast = parseMarkdown("@test-bot\n\nhi there");
-    const result = toPlainText(ast);
-    expect(result).toMatch(BOT_MENTION_WITH_WHITESPACE_REGEX);
+  it("preserves paragraph boundaries as whitespace", async () => {
+    const ast = await parseMarkdown("@test-bot\n\nhi there");
+    expect(toPlainText(ast)).toMatch(BOT_MENTION_WITH_WHITESPACE_REGEX);
   });
 
-  it("separates list items with whitespace", () => {
-    const ast = parseMarkdown("- one\n- two");
-    const result = toPlainText(ast);
-    expect(result).toMatch(LIST_ITEMS_WITH_WHITESPACE_REGEX);
+  it("separates list items with whitespace", async () => {
+    const ast = await parseMarkdown("- one\n- two");
+    expect(toPlainText(ast)).toMatch(LIST_ITEMS_WITH_WHITESPACE_REGEX);
   });
 
-  it("separates table cells and rows with structural whitespace", () => {
-    const ast = parseMarkdown(
+  it("separates table cells and rows with structural whitespace", async () => {
+    const ast = await parseMarkdown(
       "| Name | Role |\n| --- | --- |\n| **Ada** Lovelace | Engineer |"
     );
-    const result = toPlainText(ast);
-    expect(result).toBe("Name\tRole\nAda Lovelace\tEngineer");
+    expect(toPlainText(ast)).toBe("Name\tRole\nAda Lovelace\tEngineer");
   });
 
-  it("keeps empty table cells so columns stay aligned", () => {
-    const ast = parseMarkdown(
+  it("keeps empty table cells so columns stay aligned", async () => {
+    const ast = await parseMarkdown(
       "| Name | Middle | Units |\n| --- | --- | --- |\n| Samsung |  | 3 |"
     );
-    const result = toPlainText(ast);
-    expect(result).toBe("Name\tMiddle\tUnits\nSamsung\t\t3");
+    expect(toPlainText(ast)).toBe("Name\tMiddle\tUnits\nSamsung\t\t3");
   });
 
-  it("drops table rows with no content", () => {
-    const ast = parseMarkdown("|  |  |\n| --- | --- |\n| Samsung | 3 |");
-    const result = toPlainText(ast);
-    expect(result).toBe("Samsung\t3");
+  it("drops table rows with no content", async () => {
+    const ast = await parseMarkdown("|  |  |\n| --- | --- |\n| Samsung | 3 |");
+    expect(toPlainText(ast)).toBe("Samsung\t3");
   });
 
   it("handles empty AST", () => {
-    const ast = root([]);
-    const result = toPlainText(ast);
-    expect(result).toBe("");
+    expect(toPlainText(root([]))).toBe("");
   });
 });
 
@@ -274,24 +266,26 @@ describe("toPlainText", () => {
 // ============================================================================
 
 describe("markdownToPlainText", () => {
-  it("converts markdown to plain text directly", () => {
-    const result = markdownToPlainText("**bold** and _italic_");
+  it("converts markdown to plain text directly", async () => {
+    const result = await markdownToPlainText("**bold** and _italic_");
     expect(result).toBe("bold and italic");
   });
 
-  it("handles complex markdown", () => {
-    const result = markdownToPlainText("# Heading\n\nParagraph with `code`.");
+  it("handles complex markdown", async () => {
+    const result = await markdownToPlainText(
+      "# Heading\n\nParagraph with `code`."
+    );
     expect(result).toContain("Heading");
     expect(result).toContain("Paragraph with code");
   });
 
-  it("preserves whitespace after a newline-separated mention", () => {
-    const result = markdownToPlainText("@test-bot\nhi there");
+  it("preserves whitespace after a newline-separated mention", async () => {
+    const result = await markdownToPlainText("@test-bot\nhi there");
     expect(result).toMatch(BOT_MENTION_WITH_WHITESPACE_REGEX);
   });
 
-  it("preserves whitespace after a paragraph-separated mention", () => {
-    const result = markdownToPlainText("@test-bot\n\nhi there");
+  it("preserves whitespace after a paragraph-separated mention", async () => {
+    const result = await markdownToPlainText("@test-bot\n\nhi there");
     expect(result).toMatch(BOT_MENTION_WITH_WHITESPACE_REGEX);
   });
 });
@@ -301,27 +295,29 @@ describe("markdownToPlainText", () => {
 // ============================================================================
 
 describe("walkAst", () => {
-  it("visits all nodes", () => {
-    const ast = parseMarkdown("**bold** and _italic_");
+  const nodeKind = (node: Content) => getNodeTag(node) ?? "text";
+
+  it("visits all nodes", async () => {
+    const ast = await parseMarkdown("**bold** and _italic_");
     const visited: string[] = [];
 
     walkAst(ast, (node) => {
-      visited.push(node.type);
+      visited.push(nodeKind(node));
       return node;
     });
 
-    expect(visited).toContain("paragraph");
+    expect(visited).toContain("p");
     expect(visited).toContain("strong");
-    expect(visited).toContain("emphasis");
+    expect(visited).toContain("em");
     expect(visited).toContain("text");
   });
 
-  it("allows filtering nodes by returning null", () => {
-    const ast = parseMarkdown("**bold** and _italic_");
+  it("allows filtering nodes by returning null", async () => {
+    const ast = await parseMarkdown("**bold** and _italic_");
 
     const filtered = walkAst(ast, (node) => {
       // Remove all strong nodes
-      if (node.type === "strong") {
+      if (isStrongNode(node)) {
         return null;
       }
       return node;
@@ -335,40 +331,32 @@ describe("walkAst", () => {
   it("allows transforming nodes", () => {
     const ast = root([paragraph([text("hello")])]);
 
-    const transformed = walkAst(ast, (node) => {
-      if (node.type === "text") {
-        return {
-          ...node,
-          value: (node as { value: string }).value.toUpperCase(),
-        };
-      }
-      return node;
-    });
+    const transformed = walkAst(ast, (node) =>
+      isTextNode(node) ? node.toUpperCase() : node
+    );
 
-    const result = toPlainText(transformed);
-    expect(result).toBe("HELLO");
+    expect(toPlainText(transformed)).toBe("HELLO");
   });
 
-  it("handles deeply nested structures", () => {
-    const ast = parseMarkdown("> **_nested_ text**");
+  it("handles deeply nested structures", async () => {
+    const ast = await parseMarkdown("> **_nested_ text**");
     const types: string[] = [];
 
     walkAst(ast, (node) => {
-      types.push(node.type);
+      types.push(nodeKind(node));
       return node;
     });
 
     expect(types).toContain("blockquote");
     expect(types).toContain("strong");
-    expect(types).toContain("emphasis");
+    expect(types).toContain("em");
   });
 
   it("handles empty AST", () => {
-    const ast = root([]);
     const visited: string[] = [];
 
-    walkAst(ast, (node) => {
-      visited.push(node.type);
+    walkAst(root([]), (node) => {
+      visited.push(nodeKind(node));
       return node;
     });
 
@@ -383,113 +371,105 @@ describe("walkAst", () => {
 describe("AST builder functions", () => {
   describe("text", () => {
     it("creates a text node", () => {
-      const node = text("hello");
-      expect(node.type).toBe("text");
-      expect(node.value).toBe("hello");
+      expect(text("hello")).toBe("hello");
     });
 
     it("handles empty string", () => {
-      const node = text("");
-      expect(node.value).toBe("");
+      expect(text("")).toBe("");
     });
 
     it("handles special characters", () => {
-      const node = text('hello & world < > "');
-      expect(node.value).toBe('hello & world < > "');
+      expect(text('hello & world < > "')).toBe('hello & world < > "');
     });
   });
 
   describe("strong", () => {
     it("creates a strong node", () => {
-      const node = strong([text("bold")]);
-      expect(node.type).toBe("strong");
-      expect(node.children).toHaveLength(1);
+      expect(strong([text("bold")])).toEqual(["strong", {}, "bold"]);
     });
 
     it("handles nested content", () => {
       const node = strong([emphasis([text("bold italic")])]);
-      expect(node.children[0].type).toBe("emphasis");
+      expect(childTags(node)).toEqual(["em"]);
     });
   });
 
   describe("emphasis", () => {
     it("creates an emphasis node", () => {
-      const node = emphasis([text("italic")]);
-      expect(node.type).toBe("emphasis");
-      expect(node.children).toHaveLength(1);
+      expect(emphasis([text("italic")])).toEqual(["em", {}, "italic"]);
     });
   });
 
   describe("strikethrough", () => {
     it("creates a delete node", () => {
-      const node = strikethrough([text("deleted")]);
-      expect(node.type).toBe("delete");
-      expect(node.children).toHaveLength(1);
+      expect(strikethrough([text("deleted")])).toEqual(["del", {}, "deleted"]);
     });
   });
 
   describe("inlineCode", () => {
     it("creates an inline code node", () => {
       const node = inlineCode("const x = 1");
-      expect(node.type).toBe("inlineCode");
-      expect(node.value).toBe("const x = 1");
+      expect(node).toEqual(["code", {}, "const x = 1"]);
+      expect(getNodeValue(node)).toBe("const x = 1");
     });
   });
 
   describe("codeBlock", () => {
     it("creates a code block node", () => {
       const node = codeBlock("function() {}", "javascript");
-      expect(node.type).toBe("code");
-      expect(node.value).toBe("function() {}");
-      expect(node.lang).toBe("javascript");
+      expect(isCodeNode(node)).toBe(true);
+      expect(getNodeValue(node)).toBe("function() {}");
+      expect(node[1].language).toBe("javascript");
     });
 
     it("handles missing language", () => {
-      const node = codeBlock("plain code");
-      expect(node.lang).toBeUndefined();
+      expect(codeBlock("plain code")[1].language).toBeUndefined();
+    });
+
+    it("matches the parser's output", async () => {
+      const ast = await parseMarkdown("```ts\nconst a = 1\n```");
+      expect(ast.nodes[0]).toEqual(codeBlock("const a = 1", "ts"));
     });
   });
 
   describe("link", () => {
     it("creates a link node", () => {
       const node = link("https://example.com", [text("Example")]);
-      expect(node.type).toBe("link");
-      expect(node.url).toBe("https://example.com");
-      expect(node.children).toHaveLength(1);
+      expect(node).toEqual(["a", { href: "https://example.com" }, "Example"]);
     });
 
     it("handles title", () => {
       const node = link("https://example.com", [text("Example")], "Title");
-      expect(node.title).toBe("Title");
+      expect(node[1].title).toBe("Title");
     });
   });
 
   describe("blockquote", () => {
     it("creates a blockquote node", () => {
       const node = blockquote([paragraph([text("quoted")])]);
-      expect(node.type).toBe("blockquote");
-      expect(node.children).toHaveLength(1);
+      expect(getNodeTag(node)).toBe("blockquote");
+      expect(getNodeChildren(node)).toHaveLength(1);
     });
   });
 
   describe("paragraph", () => {
     it("creates a paragraph node", () => {
-      const node = paragraph([text("content")]);
-      expect(node.type).toBe("paragraph");
-      expect(node.children).toHaveLength(1);
+      expect(paragraph([text("content")])).toEqual(["p", {}, "content"]);
     });
   });
 
   describe("root", () => {
     it("creates a root node", () => {
       const node = root([paragraph([text("content")])]);
-      expect(node.type).toBe("root");
-      expect(node.children).toHaveLength(1);
+      expect(node).toEqual({
+        nodes: [["p", {}, "content"]],
+        frontmatter: {},
+        meta: {},
+      });
     });
 
     it("handles empty children", () => {
-      const node = root([]);
-      expect(node.children).toHaveLength(0);
+      expect(root([]).nodes).toHaveLength(0);
     });
   });
 });
@@ -505,7 +485,7 @@ describe("BaseFormatConverter", () => {
       return toPlainText(ast);
     }
 
-    toAst(text: string): Root {
+    toAst(text: string): Promise<Root> {
       return parseMarkdown(text);
     }
   }
@@ -513,8 +493,8 @@ describe("BaseFormatConverter", () => {
   const converter = new TestConverter();
 
   describe("extractPlainText", () => {
-    it("extracts plain text from platform format", () => {
-      const result = converter.extractPlainText("**bold** text");
+    it("extracts plain text from platform format", async () => {
+      const result = await converter.extractPlainText("**bold** text");
       expect(result).toBe("bold text");
     });
   });
@@ -525,59 +505,43 @@ describe("BaseFormatConverter", () => {
       formatted: root([paragraph([text(input)])]),
     });
 
-    const parsed = (input: string) => {
-      const formatted = parseMarkdown(input);
+    const parsed = async (input: string) => {
+      const formatted = await parseMarkdown(input);
       return { text: toPlainText(formatted), formatted };
     };
 
     // Recursive, so only call it on shallow trees.
-    const maxDepth = (node: Root | Content): number => {
-      if (!("children" in node) || node.children.length === 0) {
-        return 0;
-      }
-      let deepest = 0;
-      for (const child of node.children) {
-        deepest = Math.max(deepest, maxDepth(child as Content));
-      }
-      return deepest + 1;
+    const nodeDepth = (node: Content): number => {
+      const children = getNodeChildren(node);
+      return children.length === 0
+        ? 0
+        : 1 + Math.max(...children.map(nodeDepth));
     };
+    const maxDepth = (ast: Root): number =>
+      ast.nodes.length === 0 ? 0 : 1 + Math.max(...ast.nodes.map(nodeDepth));
 
-    const countNodes = (node: Root | Content, type: string): number => {
-      let count = node.type === type ? 1 : 0;
-      if ("children" in node) {
-        for (const child of node.children) {
-          count += countNodes(child as Content, type);
-        }
-      }
-      return count;
-    };
+    const countNodes = (node: Content, tag: string): number =>
+      (getNodeTag(node) === tag ? 1 : 0) +
+      getNodeChildren(node).reduce(
+        (sum, child) => sum + countNodes(child, tag),
+        0
+      );
 
-    const countMarkers = (value: string): number => {
-      let count = 0;
-      for (const char of value) {
-        if (char === "*" || char === "_" || char === "~") {
-          count++;
-        }
-      }
-      return count;
-    };
-
-    const parseWithSpy = (input: string, parsing = new TestConverter()) => {
+    const parseWithSpy = async (
+      input: string,
+      parsing: BaseFormatConverter = new TestConverter()
+    ) => {
       const toAst = vi.spyOn(parsing, "toAst");
-      const result = parsing.parseIncoming(input);
+      const result = await parsing.parseIncoming(input);
       return { result, toAstCalls: toAst.mock.calls.length };
     };
-    const parsedOnce = (input: string) => ({
-      result: parsed(input),
+    const parsedOnce = async (input: string) => ({
+      result: await parsed(input),
       toAstCalls: 1,
     });
-    const skipped = (input: string) => ({
-      result: unparsed(input),
-      toAstCalls: 0,
-    });
 
-    // Emphasis nested inline, so its depth is levels + 2 with no container
-    // markers.
+    // Emphasis nested inline, so its depth is levels + 2. The parser doesn't
+    // cap inline nesting.
     const nestedEmphasis = (levels: number): string =>
       `${"*a ".repeat(levels)}${"a* ".repeat(levels)}`;
 
@@ -587,31 +551,33 @@ describe("BaseFormatConverter", () => {
         "\n"
       );
 
-    // Each line holds 8 emphasis markers, so 256 lines hold exactly 2,048.
-    const emphasisLine = "*a* _b_ ~~c~~\n";
-    const maxMarkersInput = emphasisLine.repeat(256);
+    // Lifts the length and depth limits so input reaches the parser.
+    class UnlimitedConverter extends TestConverter {
+      protected override maxIncomingParseLength = 1_000_000;
+      protected override maxIncomingAstDepth = 100_000;
+    }
 
-    it("matches extractPlainText and toAst for markdown input", () => {
+    it("matches extractPlainText and toAst for markdown input", async () => {
       const input =
         "# Title\n\n**bold** and _italic_ with `code`\n\n- one\n- two\n\n| a | b |\n| - | - |\n| 1 | 2 |";
-      const result = converter.parseIncoming(input);
+      const result = await converter.parseIncoming(input);
       expect(result.text).toBe(
         "Title\n\nbold and italic with code\n\none\ntwo\n\na\tb\n1\t2"
       );
-      expect(result.text).toBe(converter.extractPlainText(input));
-      expect(result).toEqual(parsed(input));
+      expect(result.text).toBe(await converter.extractPlainText(input));
+      expect(result).toEqual(await parsed(input));
       expect(result).not.toEqual(unparsed(input));
     });
 
-    it("parses input once", () => {
+    it("parses input once", async () => {
       const parsing = new TestConverter();
       const toAst = vi.spyOn(parsing, "toAst");
-      const result = parsing.parseIncoming("**bold** text");
+      const result = await parsing.parseIncoming("**bold** text");
       expect(result.text).toBe("bold text");
       expect(result.formatted).toMatchObject(
         root([paragraph([strong([text("bold")]), text(" text")])])
       );
-      expect(result).toEqual(parsed("**bold** text"));
+      expect(result).toEqual(await parsed("**bold** text"));
       expect(result).not.toEqual(unparsed("**bold** text"));
       expect(toAst).toHaveBeenCalledTimes(1);
     });
@@ -621,822 +587,161 @@ describe("BaseFormatConverter", () => {
         expect(DEFAULT_MAX_INCOMING_PARSE_LENGTH).toBe(16_384);
       });
 
-      it("parses input at the limit", () => {
+      it("parses input at the limit", async () => {
         const parsing = new TestConverter();
         const toAst = vi.spyOn(parsing, "toAst");
         const input = `**bold**${"a".repeat(DEFAULT_MAX_INCOMING_PARSE_LENGTH - 8)}`;
-        const result = parsing.parseIncoming(input);
+        const result = await parsing.parseIncoming(input);
         expect(result.text).toBe(
           `bold${"a".repeat(DEFAULT_MAX_INCOMING_PARSE_LENGTH - 8)}`
         );
-        expect(result).toEqual(parsed(input));
+        expect(result).toEqual(await parsed(input));
         expect(result).not.toEqual(unparsed(input));
         expect(toAst).toHaveBeenCalledTimes(1);
       });
 
-      it("keeps input over the limit as a single text node", () => {
+      it("keeps input over the limit as a single text node", async () => {
         const parsing = new TestConverter();
         const toAst = vi.spyOn(parsing, "toAst");
         const input = `**bold**${"a".repeat(DEFAULT_MAX_INCOMING_PARSE_LENGTH - 7)}`;
-        const result = parsing.parseIncoming(input);
+        const result = await parsing.parseIncoming(input);
         expect(result).toEqual({
           text: input,
-          formatted: {
-            type: "root",
-            children: [
-              { type: "paragraph", children: [{ type: "text", value: input }] },
-            ],
-          },
+          formatted: { nodes: [["p", {}, input]], frontmatter: {}, meta: {} },
         });
         expect(toAst).not.toHaveBeenCalled();
       });
 
-      it("respects a lower subclass limit", () => {
+      it("respects a lower subclass limit", async () => {
         class SmallLimitConverter extends TestConverter {
           protected override maxIncomingParseLength = 5;
         }
         const parsing = new SmallLimitConverter();
         const toAst = vi.spyOn(parsing, "toAst");
-        const result = parsing.parseIncoming("**bold**");
+        const result = await parsing.parseIncoming("**bold**");
         expect(result).toEqual(unparsed("**bold**"));
         expect(toAst).not.toHaveBeenCalled();
       });
 
-      it("respects a higher subclass limit", () => {
+      it("respects a higher subclass limit", async () => {
         class LargeLimitConverter extends TestConverter {
           protected override maxIncomingParseLength = 20_000;
         }
         const input = `**bold**${"a".repeat(DEFAULT_MAX_INCOMING_PARSE_LENGTH)}`;
-        const result = new LargeLimitConverter().parseIncoming(input);
-        expect(result).toEqual(parsed(input));
+        const result = await new LargeLimitConverter().parseIncoming(input);
+        expect(result).toEqual(await parsed(input));
         expect(result).not.toEqual(unparsed(input));
-      });
-    });
-
-    describe("emphasis marker limit", () => {
-      it("parses input with exactly 2,048 markers", () => {
-        expect(countMarkers(maxMarkersInput)).toBe(2048);
-        const result = converter.parseIncoming(maxMarkersInput);
-        expect(result).toEqual(parsed(maxMarkersInput));
-        expect(result).not.toEqual(unparsed(maxMarkersInput));
-        expect(countNodes(result.formatted, "emphasis")).toBe(512);
-        expect(countNodes(result.formatted, "delete")).toBe(256);
-      });
-
-      it.each([
-        "*",
-        "_",
-        "~",
-      ])("keeps input with 2,049 markers as a single text node when the extra marker is %s", (marker) => {
-        const parsing = new TestConverter();
-        const toAst = vi.spyOn(parsing, "toAst");
-        const input = `${maxMarkersInput}x${marker}`;
-        expect(countMarkers(input)).toBe(2049);
-        expect(parsing.parseIncoming(input)).toEqual(unparsed(input));
-        expect(toAst).not.toHaveBeenCalled();
-      });
-
-      it("parses unmatched markers up to the limit", () => {
-        const input = "*a".repeat(2048);
-        const result = converter.parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-        expect(countNodes(result.formatted, "emphasis")).toBeGreaterThan(0);
-      });
-
-      it("keeps unmatched markers over the limit as a single text node", () => {
-        const input = `${"*a".repeat(2048)}*`;
-        expect(converter.parseIncoming(input)).toEqual(unparsed(input));
-      });
-
-      it("does not count other punctuation", () => {
-        const input = `${maxMarkersInput}\n${"-+=^|#!?.,;:'\"()".repeat(400)}`;
-        expect(input.length).toBeLessThanOrEqual(
-          DEFAULT_MAX_INCOMING_PARSE_LENGTH
-        );
-        expect(countMarkers(input)).toBe(2048);
-        const result = converter.parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-        expect(countNodes(result.formatted, "emphasis")).toBe(512);
-      });
-
-      it("parses a long realistic message", () => {
-        const section =
-          "Hey team, here is the **update** for _today_: see [the doc](https://example.com/doc) and `config.ts`.\n\n- item one with ~~old~~ text\n- item two\n\n> quoted line\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n```ts\nconst x = 1;\n```\n\n";
-        const input = section.repeat(60);
-        expect(input.length).toBeLessThanOrEqual(
-          DEFAULT_MAX_INCOMING_PARSE_LENGTH
-        );
-        expect(countMarkers(input)).toBeLessThanOrEqual(2048);
-        const result = converter.parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-        expect(countNodes(result.formatted, "table")).toBe(60);
-        expect(countNodes(result.formatted, "link")).toBe(60);
-      });
-
-      it("respects a lower subclass limit", () => {
-        class FewMarkersConverter extends TestConverter {
-          protected override maxIncomingEmphasisMarkers = 3;
-        }
-        const parsing = new FewMarkersConverter();
-        const result = parsing.parseIncoming("*a*");
-        expect(result).toEqual(parsed("*a*"));
-        expect(result).not.toEqual(unparsed("*a*"));
-        expect(parsing.parseIncoming("**a**")).toEqual(unparsed("**a**"));
-      });
-
-      it("respects a higher subclass limit", () => {
-        class ManyMarkersConverter extends TestConverter {
-          protected override maxIncomingEmphasisMarkers = 10_000;
-        }
-        const input = `${maxMarkersInput}x*`;
-        const result = new ManyMarkersConverter().parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-      });
-    });
-
-    describe("closing bracket limit", () => {
-      it("parses input with exactly 128 closing brackets", () => {
-        const input = `# Brackets\n\n${"a]".repeat(128)}`;
-        const result = converter.parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-        expect(countNodes(result.formatted, "heading")).toBe(1);
-      });
-
-      it("keeps input with 129 closing brackets as a single text node", () => {
-        const parsing = new TestConverter();
-        const toAst = vi.spyOn(parsing, "toAst");
-        const input = `# Brackets\n\n${"a]".repeat(129)}`;
-        expect(parsing.parseIncoming(input)).toEqual(unparsed(input));
-        expect(toAst).not.toHaveBeenCalled();
-      });
-
-      it("does not count opening brackets", () => {
-        const input = `# Brackets\n\n${"[".repeat(8192)}`;
-        const result = converter.parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-      });
-
-      it("counts brackets that close links", () => {
-        const atLimit = "[a](b) ".repeat(128);
-        const result = converter.parseIncoming(atLimit);
-        expect(result).toEqual(parsed(atLimit));
-        expect(countNodes(result.formatted, "link")).toBe(128);
-        const overLimit = "[a](b) ".repeat(129);
-        expect(converter.parseIncoming(overLimit)).toEqual(unparsed(overLimit));
-      });
-
-      it("respects a lower subclass limit", () => {
-        class FewBracketsConverter extends TestConverter {
-          protected override maxIncomingClosingBrackets = 1;
-        }
-        const parsing = new FewBracketsConverter();
-        const link1 = "[a](https://example.com)";
-        const link2 = `${link1} [b](https://example.com)`;
-        const result = parsing.parseIncoming(link1);
-        expect(result).toEqual(parsed(link1));
-        expect(result).not.toEqual(unparsed(link1));
-        expect(parsing.parseIncoming(link2)).toEqual(unparsed(link2));
-      });
-
-      it("respects a higher subclass limit", () => {
-        class ManyBracketsConverter extends TestConverter {
-          protected override maxIncomingClosingBrackets = 10_000;
-        }
-        const input = `# Brackets\n\n${"a]".repeat(200)}`;
-        const result = new ManyBracketsConverter().parseIncoming(input);
-        expect(result).toEqual(parsed(input));
-        expect(result).not.toEqual(unparsed(input));
-      });
-    });
-
-    describe("angle bracket limit", () => {
-      it("parses input with exactly 512 angle brackets", () => {
-        const input = `# Angles\n\n${"1 < 2 ".repeat(512)}`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it("keeps input with 513 angle brackets as a single text node", () => {
-        const input = `# Angles\n\n${"1 < 2 ".repeat(513)}`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-      });
-
-      it("does not count closing angle brackets", () => {
-        const input = `# Angles\n\n${"2 > 1 ".repeat(2000)}`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it("respects a lower subclass limit", () => {
-        class FewAnglesConverter extends TestConverter {
-          protected override maxIncomingAngleBrackets = 1;
-        }
-        const result = parseWithSpy("**a** <b>", new FewAnglesConverter());
-        expect(result).toEqual(parsedOnce("**a** <b>"));
-        expect(parseWithSpy("**a** <b> <c>", new FewAnglesConverter())).toEqual(
-          skipped("**a** <b> <c>")
-        );
-      });
-
-      it("respects a higher subclass limit", () => {
-        class ManyAnglesConverter extends TestConverter {
-          protected override maxIncomingAngleBrackets = 10_000;
-        }
-        const input = `# Angles\n\n${"1 < 2 ".repeat(513)}`;
-        const result = parseWithSpy(input, new ManyAnglesConverter());
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-    });
-
-    describe("www autolink limit", () => {
-      const wwwWord = (count: number, prefixes = ["www."]): string => {
-        let word = "";
-        for (let i = 0; i < count; i++) {
-          word += `${prefixes[i % prefixes.length]}a`;
-        }
-        return word;
-      };
-
-      it("parses a word with exactly 8 www. occurrences", () => {
-        const input = `**see** ${wwwWord(8)} now`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it.each([
-        ["lowercase", ["www."]],
-        ["uppercase", ["WWW."]],
-        ["mixed case", ["www.", "WWW.", "wWw."]],
-      ])("keeps a word with 9 %s www. occurrences as a single text node", (_name, prefixes) => {
-        const input = `**see** ${wwwWord(9, prefixes)} now`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-      });
-
-      it("parses many www. links separated by whitespace", () => {
-        const input = "see www.example.com and ".repeat(70);
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(countNodes(result.result.formatted, "link")).toBe(70);
-      });
-
-      it("limits each word, not the line", () => {
-        const atLimit = `${wwwWord(8)} `.repeat(20);
-        const result = parseWithSpy(atLimit);
-        expect(result).toEqual(parsedOnce(atLimit));
-        expect(result.result).not.toEqual(unparsed(atLimit));
-        const overLimit = `${atLimit}${wwwWord(9)}`;
-        expect(parseWithSpy(overLimit)).toEqual(skipped(overLimit));
-      });
-
-      it("splits words on tabs as well as spaces", () => {
-        const input = `**see** ${wwwWord(8)}\t${wwwWord(8)}`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it("respects a lower subclass limit", () => {
-        class FewLinksConverter extends TestConverter {
-          protected override maxIncomingWwwAutolinks = 1;
-        }
-        const separate = "see www.a.com and www.b.com";
-        const result = parseWithSpy(separate, new FewLinksConverter());
-        expect(result).toEqual(parsedOnce(separate));
-        expect(result.result).not.toEqual(unparsed(separate));
-        const joined = "see www.a.com/www.b.com";
-        expect(parseWithSpy(joined, new FewLinksConverter())).toEqual(
-          skipped(joined)
-        );
-      });
-
-      it("respects a higher subclass limit", () => {
-        class ManyLinksConverter extends TestConverter {
-          protected override maxIncomingWwwAutolinks = 100;
-        }
-        const input = `**see** ${wwwWord(9)} now`;
-        const result = parseWithSpy(input, new ManyLinksConverter());
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-    });
-
-    describe("container marker limit", () => {
-      const mixedMarkers = (count: number): string => {
-        const markers = ["> ", "- ", "1. ", "1) "];
-        let line = "";
-        for (let i = 0; i < count; i++) {
-          line += markers[i % markers.length];
-        }
-        return `${line}a`;
-      };
-
-      it.each([
-        [">", (n: number) => `${">".repeat(n)}a`],
-        ["> ", (n: number) => `${"> ".repeat(n)}a`],
-        ["- ", (n: number) => `${"- ".repeat(n)}a`],
-        ["+ ", (n: number) => `${"+ ".repeat(n)}a`],
-        ["* ", (n: number) => `${"* ".repeat(n)}a`],
-        ["1. ", (n: number) => `${"1. ".repeat(n)}a`],
-        ["1) ", (n: number) => `${"1) ".repeat(n)}a`],
-        ["123456789. ", (n: number) => `${"123456789. ".repeat(n)}a`],
-        ["tab-separated -", (n: number) => `${"-\t".repeat(n)}a`],
-        ["mixed > - 1. 1)", mixedMarkers],
-      ])("parses a line with 32 %s markers and skips parsing one with 33", (_name, line) => {
-        const atLimit = line(32);
-        const result = parseWithSpy(atLimit);
-        expect(result).toEqual(parsedOnce(atLimit));
-        expect(result.result).not.toEqual(unparsed(atLimit));
-        const overLimit = line(33);
-        expect(parseWithSpy(overLimit)).toEqual(skipped(overLimit));
-      });
-
-      it("counts markers on every line", () => {
-        const input = `**intro**\n\n${">".repeat(10)}a\n${">".repeat(33)}a`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-      });
-
-      it.each([
-        ["- without a following space", "-a"],
-        ["a 10-digit ordered list number", "1000000000. a"],
-        ["an 11-digit ordered list number", "10000000000. a"],
-        ["an ordered list number without a following space", "1.x"],
-        ["a number with another delimiter", "1: a"],
-        ["a number without a delimiter", "1 a"],
-        ["a delimiter without a number", ". a"],
-        ["text", "a"],
-      ])("does not count %s", (_name, tail) => {
-        const input = `${">".repeat(32)}${tail}`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it("counts a 9-digit ordered list number, an empty item, and a trailing marker", () => {
-        for (const tail of ["123456789. a", "1.", "-"]) {
-          const input = `${">".repeat(32)}${tail}`;
-          expect(parseWithSpy(input)).toEqual(skipped(input));
-        }
-      });
-
-      it("ignores markers after other text on the line", () => {
-        for (const input of [
-          `**a** ${">".repeat(200)}`,
-          `**a** ${"- ".repeat(200)}`,
-          `**a** ${"1. ".repeat(200)}`,
-        ]) {
-          const result = converter.parseIncoming(input);
-          expect(result).toEqual(parsed(input));
-          expect(result).not.toEqual(unparsed(input));
-        }
-      });
-
-      it("limits markers per line, not in total", () => {
-        for (const input of [
-          `${">".repeat(32)}a\n`.repeat(5),
-          `${"- ".repeat(32)}a\n`.repeat(5),
-        ]) {
-          const result = converter.parseIncoming(input);
-          expect(result).toEqual(parsed(input));
-          expect(result).not.toEqual(unparsed(input));
-        }
-      });
-
-      it("counts each - of a thematic break, so a long one is kept as text", () => {
-        const atLimit = "- ".repeat(32);
-        const result = converter.parseIncoming(atLimit);
-        expect(result).toEqual(parsed(atLimit));
-        expect(result.formatted.children).toMatchObject([
-          { type: "thematicBreak" },
-        ]);
-        for (const overLimit of ["- ".repeat(33), "- ".repeat(200)]) {
-          expect(parseWithSpy(overLimit)).toEqual(skipped(overLimit));
-        }
-      });
-
-      it("parses ordinary thematic breaks", () => {
-        for (const input of ["a\n\n---\n\nb", "a\n\n- - -\n\nb"]) {
-          const result = converter.parseIncoming(input);
-          expect(result).toEqual(parsed(input));
-          expect(countNodes(result.formatted, "thematicBreak")).toBe(1);
-        }
-      });
-
-      it("counts a footnote definition label as a marker", () => {
-        const atLimit = `[^a]: ${"- ".repeat(31)}a`;
-        const result = parseWithSpy(atLimit);
-        expect(result).toEqual(parsedOnce(atLimit));
-        expect(result.result).not.toEqual(unparsed(atLimit));
-        const overLimit = `[^a]: ${"- ".repeat(32)}a`;
-        expect(parseWithSpy(overLimit)).toEqual(skipped(overLimit));
-      });
-
-      it("does not count a footnote reference without a colon", () => {
-        const input = `[^a] ${"- ".repeat(40)}a`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it.each([
-        ["spaces", " ".repeat(64), " ".repeat(66)],
-        ["tabs", "\t".repeat(16), `${"\t".repeat(16)}  `],
-        ["a space then a tab", " \t".repeat(16), `${" \t".repeat(16)}  `],
-      ])("counts every two columns of leading %s as a marker", (_name, atLimit, overLimit) => {
-        const parsedInput = `para\n\n${atLimit}a`;
-        const result = parseWithSpy(parsedInput);
-        expect(result).toEqual(parsedOnce(parsedInput));
-        expect(result.result).not.toEqual(unparsed(parsedInput));
-        const skippedInput = `para\n\n${overLimit}a`;
-        expect(parseWithSpy(skippedInput)).toEqual(skipped(skippedInput));
-      });
-
-      it("ignores lines that hold only whitespace", () => {
-        for (const blank of [" ".repeat(200), "\t".repeat(100)]) {
-          const input = `**a**\n${blank}\nb`;
-          const result = parseWithSpy(input);
-          expect(result).toEqual(parsedOnce(input));
-          expect(result.result).not.toEqual(unparsed(input));
-        }
-      });
-
-      it("adds leading indentation to the markers on a line", () => {
-        const atLimit = `para\n\n${" ".repeat(20)}${"- ".repeat(22)}a`;
-        const result = parseWithSpy(atLimit);
-        expect(result).toEqual(parsedOnce(atLimit));
-        expect(result.result).not.toEqual(unparsed(atLimit));
-        const overLimit = `para\n\n${" ".repeat(20)}${"- ".repeat(23)}a`;
-        expect(parseWithSpy(overLimit)).toEqual(skipped(overLimit));
-      });
-
-      it("counts markers on lines ending in CRLF", () => {
-        const input = `a\r\n${"- ".repeat(33)}a`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-      });
-
-      it("counts markers on lines ending in a bare CR", () => {
-        // micromark treats a bare \r as a line ending.
-        const input = `a\r${"- ".repeat(33)}a`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-        const middle = `a\r${"- ".repeat(33)}a\rb`;
-        expect(parseWithSpy(middle)).toEqual(skipped(middle));
-      });
-
-      it("parses bare CR separated lines that are each under the limit", () => {
-        const input = `${"- ".repeat(32)}a\r`.repeat(10);
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it("respects a lower subclass limit", () => {
-        class FewMarkersConverter extends TestConverter {
-          protected override maxIncomingContainerMarkers = 2;
-        }
-        const result = parseWithSpy("> > a", new FewMarkersConverter());
-        expect(result).toEqual(parsedOnce("> > a"));
-        expect(result.result).not.toEqual(unparsed("> > a"));
-        expect(parseWithSpy("> > > a", new FewMarkersConverter())).toEqual(
-          skipped("> > > a")
-        );
-      });
-
-      it("respects a higher subclass limit", () => {
-        class ManyMarkersConverter extends TestConverter {
-          protected override maxIncomingContainerMarkers = 200;
-        }
-        const input = `${">".repeat(100)}a`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-        const result = parseWithSpy(input, new ManyMarkersConverter());
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result).not.toEqual(unparsed(input));
-      });
-
-      it("is independent of the AST depth limit", () => {
-        class DeepConverter extends TestConverter {
-          protected override maxIncomingAstDepth = 1000;
-        }
-        const input = `${">".repeat(33)}a`;
-        expect(parseWithSpy(input, new DeepConverter())).toEqual(
-          skipped(input)
-        );
-      });
-    });
-
-    describe("fenced code blocks", () => {
-      const overBrackets = "a]".repeat(129);
-
-      it("does not count closing brackets inside a JSON fence", () => {
-        const json = "[1]\n".repeat(521);
-        const input = `**data**\n\n\`\`\`json\n${json}\`\`\`\n`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(result.result.formatted.children).toMatchObject([
-          { type: "paragraph" },
-          { type: "code", lang: "json", value: json.slice(0, -1) },
-        ]);
-        const unfenced = `**data**\n\n${json}`;
-        expect(parseWithSpy(unfenced)).toEqual(skipped(unfenced));
-      });
-
-      it("does not count emphasis markers inside a Python fence", () => {
-        const python = "__init__ = 1\n".repeat(1100);
-        const input = `**code**\n\n\`\`\`python\n${python}\`\`\`\n`;
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(countNodes(result.result.formatted, "code")).toBe(1);
-        const unfenced = `**code**\n\n${python}`;
-        expect(parseWithSpy(unfenced)).toEqual(skipped(unfenced));
-      });
-
-      it("counts text after a closed fence", () => {
-        const over = `\`\`\`\nx\n\`\`\`\n${overBrackets}`;
-        expect(parseWithSpy(over)).toEqual(skipped(over));
-        const under = `\`\`\`\nx\n\`\`\`\n${"a]".repeat(128)}`;
-        const result = parseWithSpy(under);
-        expect(result).toEqual(parsedOnce(under));
-        expect(result.result).not.toEqual(unparsed(under));
-      });
-
-      it.each([
-        ["a shorter closer", `\`\`\`\`\nx\n\`\`\`\n${overBrackets}`],
-        [
-          "a closer indented 4 spaces",
-          `\`\`\`\nx\n    \`\`\`\n${overBrackets}`,
-        ],
-        [
-          "a tilde closer for a backtick fence",
-          `\`\`\`\nx\n~~~\n${overBrackets}`,
-        ],
-        [
-          "a backtick closer for a tilde fence",
-          `~~~\nx\n\`\`\`\n${overBrackets}`,
-        ],
-        [
-          "a closer with an info string",
-          `\`\`\`\nx\n\`\`\`js\n${overBrackets}`,
-        ],
-        ["no closer", `\`\`\`\n${overBrackets}`],
-        [
-          "a tilde fence with a backtick in its info",
-          `~~~ a\`b\n${overBrackets}`,
-        ],
-      ])("keeps skipping after %s", (_name, input) => {
-        const result = parseWithSpy(input);
-        expect(result).toEqual(parsedOnce(input));
-        expect(countNodes(result.result.formatted, "code")).toBe(1);
-      });
-
-      it.each([
-        ["a closer indented 3 spaces", `\`\`\`\nx\n   \`\`\`\n${overBrackets}`],
-        ["a longer closer", `\`\`\`\nx\n\`\`\`\`\n${overBrackets}`],
-        [
-          "a closer with trailing whitespace",
-          `\`\`\`\nx\n\`\`\` \t\n${overBrackets}`,
-        ],
-        [
-          "a backtick fence with a backtick in its info",
-          `\`\`\`a\`b\n${overBrackets}`,
-        ],
-        ["an indented opener", `  \`\`\`\n${overBrackets}`],
-        ["an opener inside a list item", `- a\n  \`\`\`\n${overBrackets}`],
-      ])("counts text after %s", (_name, input) => {
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-      });
-
-      it("handles fences with bare CR line endings", () => {
-        const inside = `\`\`\`\r${overBrackets}\r\`\`\`\rb`;
-        const result = parseWithSpy(inside);
-        expect(result).toEqual(parsedOnce(inside));
-        expect(countNodes(result.result.formatted, "code")).toBe(1);
-        const after = `\`\`\`\rx\r\`\`\`\r${overBrackets}`;
-        expect(parseWithSpy(after)).toEqual(skipped(after));
-      });
-
-      it.each([
-        ["an indented opener", "  ```\nx\n  ```"],
-        ["an indented tilde opener", "   ~~~\nx\n   ~~~"],
-        ["a closer indented 2 spaces", "```\nx\n  ```"],
-      ])("counts fenced content when the text contains %s anywhere", (_name, elsewhere) => {
-        const fenced = `\`\`\`\n${overBrackets}\n\`\`\`\n`;
-        const control = `${fenced}\nlater`;
-        const result = parseWithSpy(control);
-        expect(result).toEqual(parsedOnce(control));
-        expect(countNodes(result.result.formatted, "code")).toBe(1);
-        for (const input of [
-          `${fenced}\n${elsewhere}\n`,
-          `${elsewhere}\n\n${fenced}`,
-        ]) {
-          expect(parseWithSpy(input)).toEqual(skipped(input));
-        }
-      });
-
-      it("counts fenced content when the text may start an HTML block", () => {
-        const input = `<div>\n\n\`\`\`\n${overBrackets}\n\`\`\`\n`;
-        expect(parseWithSpy(input)).toEqual(skipped(input));
-      });
-
-      describe("never skips text that is parsed as markdown", () => {
-        class BudgetConverter extends TestConverter {
-          exceedsBudget(platformText: string): boolean {
-            return this.exceedsIncomingBudget(platformText);
-          }
-        }
-        const budget = new BudgetConverter();
-        const attack = "*a".repeat(2100);
-        const columnZeroFences = ["```", "~~~", "````", "```js", "~~~ a`b"];
-        // The empty entry puts the attack straight after the context, where a
-        // fence the context leaves open or closed decides how it parses.
-        const fences = [...columnZeroFences, " ```", "   ~~~", ""];
-
-        const attackInCode = (node: Root | Content): boolean => {
-          if (node.type === "code") {
-            return node.value.includes(attack);
-          }
-          return (
-            "children" in node &&
-            node.children.some((child) => attackInCode(child as Content))
-          );
-        };
-
-        it("skips the attack inside a fence with no other context", () => {
-          for (const fence of columnZeroFences) {
-            expect(budget.exceedsBudget(`${fence}\n${attack}`)).toBe(false);
-          }
-        });
-
-        it.each([
-          "",
-          "para\n",
-          "- item\n",
-          "> quote\n",
-          "[^x]: note\n",
-          "    indented\n",
-          "| a |\n| - |\n| b |\n",
-          "Title\n===\n",
-          "1. one\n",
-          "<div>\n",
-          "  - nested\n    more\n",
-          "> - a\n> ",
-          "- a\n\n  ",
-          "- a\n  ",
-          "* * *\n",
-          "[x]: /url\n",
-          "<!-- c -->\n",
-          "  ```\n```\n",
-          "```\n  ```\n",
-        ])("after %j", (context) => {
-          for (const fence of fences) {
-            const input = `${context}${fence}\n${attack}`;
-            if (!budget.exceedsBudget(input)) {
-              expect({
-                fence,
-                inCode: attackInCode(parseMarkdown(input)),
-              }).toEqual({
-                fence,
-                inCode: true,
-              });
-            }
-          }
-        });
-
-        it.each([
-          ["a backtick fence indented 2 spaces", "  ```\n```\n"],
-          ["a backtick fence indented 3 spaces", "   ```\n```\n"],
-          ["a tilde fence indented 1 space", " ~~~\n~~~\n"],
-        ])("counts text after %s closed by a fence at column 0", (_name, context) => {
-          const input = `${context}${attack}`;
-          expect(attackInCode(parseMarkdown(input))).toBe(false);
-          expect(budget.exceedsBudget(input)).toBe(true);
-        });
       });
     });
 
     describe("stack overflow while parsing", () => {
-      it("keeps input that overflows the parser as a single text node", () => {
-        // Higher limits let the input past the pre-scan and the depth check.
-        class ManyMarkersConverter extends TestConverter {
-          protected override maxIncomingAstDepth = 100_000;
-          protected override maxIncomingContainerMarkers = 100_000;
-        }
-        const parsing = new ManyMarkersConverter();
+      it("keeps input that overflows the parser as a single text node", async () => {
+        const parsing = new UnlimitedConverter();
         const toAst = vi.spyOn(parsing, "toAst");
-        const input = ">".repeat(8000);
-        expect(() => parseMarkdown(input)).toThrow(RangeError);
-        expect(parsing.parseIncoming(input)).toEqual(unparsed(input));
+        const input = nestedEmphasis(3000);
+        await expect(parseMarkdown(input)).rejects.toThrow(RangeError);
+        expect(await parsing.parseIncoming(input)).toEqual(unparsed(input));
         expect(toAst).toHaveBeenCalledTimes(1);
       });
 
-      it("keeps 6,000 nested blockquote markers as a single text node", () => {
+      it("keeps 6,000 nested blockquote markers as a single text node", async () => {
         const input = ">".repeat(6000);
-        let result: { formatted: Root; text: string } | undefined;
-        expect(() => {
-          result = converter.parseIncoming(input);
-        }).not.toThrow();
-        expect(result).toEqual(unparsed(input));
+        expect(await converter.parseIncoming(input)).toEqual(unparsed(input));
       });
 
-      it("falls back when toAst throws a RangeError", () => {
+      it("falls back when toAst throws a RangeError", async () => {
         class OverflowConverter extends TestConverter {
-          override toAst(): Root {
+          override toAst(): Promise<Root> {
             throw new RangeError("Maximum call stack size exceeded");
           }
         }
-        expect(new OverflowConverter().parseIncoming("**bold**")).toEqual(
+        expect(await new OverflowConverter().parseIncoming("**bold**")).toEqual(
           unparsed("**bold**")
         );
       });
 
-      it("propagates other errors from toAst", () => {
+      it("falls back when toAst rejects with a RangeError", async () => {
+        class OverflowConverter extends TestConverter {
+          override toAst(): Promise<Root> {
+            return Promise.reject(
+              new RangeError("Maximum call stack size exceeded")
+            );
+          }
+        }
+        expect(await new OverflowConverter().parseIncoming("**bold**")).toEqual(
+          unparsed("**bold**")
+        );
+      });
+
+      it("propagates other errors from toAst", async () => {
         class BrokenConverter extends TestConverter {
-          override toAst(): Root {
+          override toAst(): Promise<Root> {
             throw new TypeError("broken parser");
           }
         }
-        expect(() => new BrokenConverter().parseIncoming("**bold**")).toThrow(
-          new TypeError("broken parser")
-        );
+        await expect(
+          new BrokenConverter().parseIncoming("**bold**")
+        ).rejects.toThrow(new TypeError("broken parser"));
       });
     });
 
     describe("AST depth limit", () => {
-      // A higher marker limit lets single-line nesting past the pre-scan, so
-      // these reach the depth check.
-      class ManyMarkersConverter extends TestConverter {
-        protected override maxIncomingContainerMarkers = 1000;
-      }
-
       it.each([
-        ["blockquotes", (n: number) => `${">".repeat(n)}a`, 126, 128, 127, 129],
-        ["lists", (n: number) => `${"- ".repeat(n)}a`, 63, 128, 64, 130],
-        ["lists nested by indentation", staircase, 63, 128, 64, 130],
-      ])("parses %s at depth 128 and rejects them after parsing beyond it", (_name, build, atLevels, atDepth, overLevels, overDepth) => {
+        ["blockquotes", (n: number) => `${">".repeat(n)}a`, 97, 99, 98, 100],
+        ["lists", (n: number) => `${"- ".repeat(n)}a`, 48, 98, 49, 100],
+        ["lists nested by indentation", staircase, 48, 98, 49, 100],
+        ["nested emphasis", nestedEmphasis, 97, 99, 98, 100],
+      ])("parses %s below depth 100 and rejects them at it", async (_name, build, atLevels, atDepth, overLevels, overDepth) => {
         const atLimit = build(atLevels);
-        expect(maxDepth(parseMarkdown(atLimit))).toBe(atDepth);
-        const result = parseWithSpy(atLimit, new ManyMarkersConverter());
-        expect(result).toEqual({ result: parsed(atLimit), toAstCalls: 1 });
+        expect(maxDepth(await parseMarkdown(atLimit))).toBe(atDepth);
+        const result = await parseWithSpy(atLimit);
+        expect(result).toEqual(await parsedOnce(atLimit));
         expect(result.result).not.toEqual(unparsed(atLimit));
 
         const overLimit = build(overLevels);
-        expect(maxDepth(parseMarkdown(overLimit))).toBe(overDepth);
-        expect(parseWithSpy(overLimit, new ManyMarkersConverter())).toEqual({
+        expect(maxDepth(await parseMarkdown(overLimit))).toBe(overDepth);
+        expect(await parseWithSpy(overLimit)).toEqual({
           result: unparsed(overLimit),
           toAstCalls: 1,
         });
       });
 
-      it("checks the depth of nested emphasis with default limits", () => {
-        const atLimit = nestedEmphasis(126);
-        expect(maxDepth(parseMarkdown(atLimit))).toBe(128);
-        const result = parseWithSpy(atLimit);
-        expect(result).toEqual(parsedOnce(atLimit));
-        expect(result.result).not.toEqual(unparsed(atLimit));
-
-        const overLimit = nestedEmphasis(127);
-        expect(maxDepth(parseMarkdown(overLimit))).toBe(129);
-        expect(parseWithSpy(overLimit)).toEqual({
-          result: unparsed(overLimit),
-          toAstCalls: 1,
-        });
+      it("keeps input the parser cuts short at 100 levels as text", async () => {
+        // The parser drops everything after nesting that reaches 100
+        // levels, including later paragraphs.
+        const input = `first\n\n${"- ".repeat(51)}deep\n\nlast`;
+        expect(toPlainText(await parseMarkdown(input))).toBe("first");
+        expect(await converter.parseIncoming(input)).toEqual(unparsed(input));
       });
 
-      it("keeps input with thousands of nested markers as a single text node", () => {
+      it("keeps input with thousands of nested markers as a single text node", async () => {
         const input = ">".repeat(3000);
-        expect(converter.parseIncoming(input)).toEqual(unparsed(input));
+        expect(await converter.parseIncoming(input)).toEqual(unparsed(input));
       });
 
-      it("respects a lower subclass limit", () => {
+      it("respects a lower subclass limit", async () => {
         class ShallowConverter extends TestConverter {
           protected override maxIncomingAstDepth = 3;
         }
-        expect(maxDepth(parseMarkdown("> a"))).toBe(3);
-        const result = new ShallowConverter().parseIncoming("> a");
-        expect(result).toEqual(parsed("> a"));
+        expect(maxDepth(await parseMarkdown("> a"))).toBe(3);
+        const result = await new ShallowConverter().parseIncoming("> a");
+        expect(result).toEqual(await parsed("> a"));
         expect(result).not.toEqual(unparsed("> a"));
-        expect(parseWithSpy(">> a", new ShallowConverter())).toEqual({
+        expect(await parseWithSpy(">> a", new ShallowConverter())).toEqual({
           result: unparsed(">> a"),
           toAstCalls: 1,
         });
       });
 
-      it("respects a higher subclass limit", () => {
+      it("respects a higher subclass limit", async () => {
         class DeepConverter extends TestConverter {
           protected override maxIncomingAstDepth = 1000;
         }
         const input = nestedEmphasis(200);
-        expect(maxDepth(parseMarkdown(input))).toBe(202);
-        expect(converter.parseIncoming(input)).toEqual(unparsed(input));
-        const result = new DeepConverter().parseIncoming(input);
-        expect(result).toEqual(parsed(input));
+        expect(maxDepth(await parseMarkdown(input))).toBe(202);
+        expect(await converter.parseIncoming(input)).toEqual(unparsed(input));
+        const result = await new DeepConverter().parseIncoming(input);
+        expect(result).toEqual(await parsed(input));
         expect(result).not.toEqual(unparsed(input));
       });
     });
@@ -1451,9 +756,9 @@ describe("BaseFormatConverter", () => {
         }
       }
 
-      class ManyMarkersPrefixedFallbackConverter extends PrefixedFallbackConverter {
+      class UnlimitedPrefixedFallbackConverter extends PrefixedFallbackConverter {
+        protected override maxIncomingParseLength = 1_000_000;
         protected override maxIncomingAstDepth = 100_000;
-        protected override maxIncomingContainerMarkers = 100_000;
       }
 
       it.each([
@@ -1464,30 +769,17 @@ describe("BaseFormatConverter", () => {
           0,
         ],
         [
-          "emphasis markers",
-          `${maxMarkersInput}x*`,
-          PrefixedFallbackConverter,
-          0,
-        ],
-        ["closing brackets", "a]".repeat(513), PrefixedFallbackConverter, 0],
-        [
-          "container markers",
-          `${">".repeat(33)}a`,
-          PrefixedFallbackConverter,
-          0,
-        ],
-        [
           "stack overflow",
-          ">".repeat(8000),
-          ManyMarkersPrefixedFallbackConverter,
+          nestedEmphasis(3000),
+          UnlimitedPrefixedFallbackConverter,
           1,
         ],
-        ["AST depth", nestedEmphasis(127), PrefixedFallbackConverter, 1],
-      ])("uses incomingFallbackText for the %s fallback", (_name, input, Converter, toAstCalls) => {
+        ["AST depth", nestedEmphasis(98), PrefixedFallbackConverter, 1],
+      ])("uses incomingFallbackText for the %s fallback", async (_name, input, Converter, toAstCalls) => {
         const parsing = new Converter();
         const toAst = vi.spyOn(parsing, "toAst");
         const expected = `unparsed: ${input}`;
-        expect(parsing.parseIncoming(input)).toEqual({
+        expect(await parsing.parseIncoming(input)).toEqual({
           text: expected,
           formatted: root([paragraph([text(expected)])]),
         });
@@ -1495,14 +787,14 @@ describe("BaseFormatConverter", () => {
         expect(toAst).toHaveBeenCalledTimes(toAstCalls);
       });
 
-      it("does not call incomingFallbackText when parsing succeeds", () => {
+      it("does not call incomingFallbackText when parsing succeeds", async () => {
         const parsing = new PrefixedFallbackConverter();
-        const result = parsing.parseIncoming("**bold** text");
-        expect(result).toEqual(parsed("**bold** text"));
+        const result = await parsing.parseIncoming("**bold** text");
+        expect(result).toEqual(await parsed("**bold** text"));
         expect(parsing.fallbackCalls).toEqual([]);
       });
 
-      it("falls back without parsing when exceedsIncomingBudget returns true", () => {
+      it("falls back without parsing when exceedsIncomingBudget returns true", async () => {
         class NoBudgetConverter extends TestConverter {
           protected override exceedsIncomingBudget(): boolean {
             return true;
@@ -1510,19 +802,21 @@ describe("BaseFormatConverter", () => {
         }
         const parsing = new NoBudgetConverter();
         const toAst = vi.spyOn(parsing, "toAst");
-        expect(parsing.parseIncoming("**bold**")).toEqual(unparsed("**bold**"));
+        expect(await parsing.parseIncoming("**bold**")).toEqual(
+          unparsed("**bold**")
+        );
         expect(toAst).not.toHaveBeenCalled();
       });
 
-      it("parses over-budget input when exceedsIncomingBudget returns false", () => {
-        class UnlimitedConverter extends TestConverter {
+      it("parses over-budget input when exceedsIncomingBudget returns false", async () => {
+        class NoLimitConverter extends TestConverter {
           protected override exceedsIncomingBudget(): boolean {
             return false;
           }
         }
-        const input = `${maxMarkersInput}x*`;
-        const result = new UnlimitedConverter().parseIncoming(input);
-        expect(result).toEqual(parsed(input));
+        const input = `**bold**${"a".repeat(DEFAULT_MAX_INCOMING_PARSE_LENGTH)}`;
+        const result = await new NoLimitConverter().parseIncoming(input);
+        expect(result).toEqual(await parsed(input));
         expect(result).not.toEqual(unparsed(input));
       });
     });
@@ -1533,85 +827,95 @@ describe("BaseFormatConverter", () => {
       it.each([
         ["unmatched *", "*a".repeat(8192)],
         ["unmatched ~", "~a".repeat(8192)],
+        ["unmatched ]", "[a".repeat(4096) + "]".repeat(4096)],
+        ["unclosed <", "<a ".repeat(5000)],
         ["6,000 nested >", ">".repeat(6000)],
         ["3,000 nested >", ">".repeat(3000)],
         ["16K pipe table", pipeTable],
-      ])("returns a serializable AST for %s", (_name, input) => {
-        const result = converter.parseIncoming(input);
+      ])("returns a serializable AST for %s", async (_name, input) => {
+        const result = await converter.parseIncoming(input);
         expect(() => JSON.stringify(result.formatted)).not.toThrow();
-        expect(() => stringifyMarkdown(result.formatted)).not.toThrow();
+        await expect(stringifyMarkdown(result.formatted)).resolves.toEqual(
+          expect.any(String)
+        );
       });
 
-      it("parses a 16K pipe table", () => {
+      it("parses a 16K pipe table", async () => {
         expect(pipeTable.length).toBeLessThanOrEqual(
           DEFAULT_MAX_INCOMING_PARSE_LENGTH
         );
-        const result = converter.parseIncoming(pipeTable);
-        expect(result).toEqual(parsed(pipeTable));
+        const result = await converter.parseIncoming(pipeTable);
+        expect(result).toEqual(await parsed(pipeTable));
         expect(result).not.toEqual(unparsed(pipeTable));
-        expect(countNodes(result.formatted, "tableRow")).toBe(1637);
+        expect(
+          result.formatted.nodes.reduce(
+            (sum, node) => sum + countNodes(node, "tr"),
+            0
+          )
+        ).toBe(1637);
       });
     });
   });
 
   describe("fromMarkdown", () => {
-    it("converts markdown to platform format", () => {
-      const result = converter.fromMarkdown("**bold**");
-      expect(result).toBe("bold");
+    it("converts markdown to platform format", async () => {
+      expect(await converter.fromMarkdown("**bold**")).toBe("bold");
     });
   });
 
   describe("toMarkdown", () => {
-    it("converts platform format to markdown", () => {
-      const result = converter.toMarkdown("plain text");
+    it("converts platform format to markdown", async () => {
+      const result = await converter.toMarkdown("plain text");
       expect(result.trim()).toBe("plain text");
     });
   });
 
   describe("renderPostable", () => {
-    it("handles string input", () => {
-      const result = converter.renderPostable("plain string");
-      expect(result).toBe("plain string");
+    it("handles string input", async () => {
+      expect(await converter.renderPostable("plain string")).toBe(
+        "plain string"
+      );
     });
 
-    it("handles raw message", () => {
-      const result = converter.renderPostable({ raw: "raw text" });
-      expect(result).toBe("raw text");
+    it("handles raw message", async () => {
+      expect(await converter.renderPostable({ raw: "raw text" })).toBe(
+        "raw text"
+      );
     });
 
-    it("handles markdown message", () => {
-      const result = converter.renderPostable({ markdown: "**bold**" });
-      expect(result).toBe("bold");
+    it("handles markdown message", async () => {
+      expect(await converter.renderPostable({ markdown: "**bold**" })).toBe(
+        "bold"
+      );
     });
 
-    it("handles AST message", () => {
+    it("handles AST message", async () => {
       const ast = root([paragraph([text("from ast")])]);
-      const result = converter.renderPostable({ ast });
-      expect(result).toBe("from ast");
+      expect(await converter.renderPostable({ ast })).toBe("from ast");
     });
 
-    it("handles card with fallback text", () => {
+    it("handles card with fallback text", async () => {
       const card = Card({ title: "Title", children: [CardText("Content")] });
-      const result = converter.renderPostable({
+      const result = await converter.renderPostable({
         card,
         fallbackText: "Custom fallback",
       });
       expect(result).toBe("Custom fallback");
     });
 
-    it("generates fallback text from card", () => {
+    it("generates fallback text from card", async () => {
       const card = Card({
         title: "Order Status",
         subtitle: "Your order details",
         children: [CardText("Processing your order...")],
       });
-      const result = converter.renderPostable({ card });
+      const result = await converter.renderPostable({ card });
       expect(result).toContain("Order Status");
       expect(result).toContain("Your order details");
       expect(result).toContain("Processing your order...");
     });
 
-    it("handles card with actions", () => {
+    it("handles card with actions", async () => {
       const card = Card({
         title: "Confirm",
         children: [
@@ -1621,14 +925,14 @@ describe("BaseFormatConverter", () => {
           ]),
         ],
       });
-      const result = converter.renderPostable({ card });
+      const result = await converter.renderPostable({ card });
       expect(result).toContain("Confirm");
       // Actions excluded from fallback — interactive elements aren't meaningful in notifications
       expect(result).not.toContain("[Yes]");
       expect(result).not.toContain("[No]");
     });
 
-    it("handles card with fields", () => {
+    it("handles card with fields", async () => {
       const card = Card({
         children: [
           Fields([
@@ -1637,23 +941,24 @@ describe("BaseFormatConverter", () => {
           ]),
         ],
       });
-      const result = converter.renderPostable({ card });
+      const result = await converter.renderPostable({ card });
       expect(result).toContain("**Name**: John");
       expect(result).toContain("**Email**: john@example.com");
     });
 
-    it("handles direct CardElement", () => {
+    it("handles direct CardElement", async () => {
       const card = Card({ title: "Direct Card" });
-      const result = converter.renderPostable(card);
-      expect(result).toContain("Direct Card");
+      expect(await converter.renderPostable(card)).toContain("Direct Card");
     });
 
-    it("throws on invalid input", () => {
-      // @ts-expect-error Testing invalid input
-      expect(() => converter.renderPostable({ invalid: true })).toThrow();
+    it("throws on invalid input", async () => {
+      await expect(
+        // @ts-expect-error Testing invalid input
+        converter.renderPostable({ invalid: true })
+      ).rejects.toThrow();
     });
 
-    it("handles card with table element", () => {
+    it("handles card with table element", async () => {
       const card = Card({
         children: [
           Table({
@@ -1665,7 +970,7 @@ describe("BaseFormatConverter", () => {
           }),
         ],
       });
-      const result = converter.renderPostable({ card });
+      const result = await converter.renderPostable({ card });
       expect(result).toContain("Name");
       expect(result).toContain("Age");
       expect(result).toContain("Alice");
@@ -1674,9 +979,8 @@ describe("BaseFormatConverter", () => {
   });
 
   describe("deprecated toPlainText method", () => {
-    it("extracts plain text from platform format", () => {
-      const result = converter.toPlainText("**bold** text");
-      expect(result).toBe("bold text");
+    it("extracts plain text from platform format", async () => {
+      expect(await converter.toPlainText("**bold** text")).toBe("bold text");
     });
   });
 
@@ -1693,7 +997,7 @@ describe("BaseFormatConverter", () => {
         );
       }
 
-      toAst(inputText: string): Root {
+      toAst(inputText: string): Promise<Root> {
         return parseMarkdown(inputText);
       }
 
@@ -1702,105 +1006,99 @@ describe("BaseFormatConverter", () => {
           return this.renderList(node, 0, (child) => this.nodeToText(child));
         }
         if (isCodeNode(node)) {
-          return `\`\`\`\n${node.value}\n\`\`\``;
+          return `\`\`\`\n${getNodeValue(node)}\n\`\`\``;
         }
-        return toPlainText({ type: "root", children: [node] });
+        return toPlainText(root([node]));
       }
     }
 
     const listConverter = new ListTestConverter();
     const commonMarkConverter = new ListTestConverter(true);
 
-    it("indents nested lists to the parent's content column", () => {
+    const firstItemChildTags = async (markdown: string) => {
+      const list = (await parseMarkdown(markdown)).nodes[0] as List;
+      return childTags(getNodeChildren(list)[0]);
+    };
+
+    it("indents nested lists to the parent's content column", async () => {
       const markdown = "1. parent\n   1. child\n2. next";
-      expect(listConverter.fromMarkdown(markdown)).toBe(markdown);
+      expect(await listConverter.fromMarkdown(markdown)).toBe(markdown);
     });
 
-    it("puts a nested list that is an item's first child on the marker line", () => {
+    it("puts a nested list that is an item's first child on the marker line", async () => {
       const markdown = "- - a\n  - b\n- c";
-      expect(listConverter.fromMarkdown(markdown)).toBe(markdown);
+      expect(await listConverter.fromMarkdown(markdown)).toBe(markdown);
     });
 
-    it("indents nested lists under multi-digit markers", () => {
-      const result = listConverter.fromMarkdown("10. parent\n    - child");
+    it("indents nested lists under multi-digit markers", async () => {
+      const result = await listConverter.fromMarkdown(
+        "10. parent\n    - child"
+      );
       expect(result).toBe("10. parent\n    - child");
     });
 
-    it("separates paragraphs inside one item with a blank line", () => {
+    it("separates paragraphs inside one item with a blank line", async () => {
       const markdown = "- first\n\n  second\n- next";
-      expect(listConverter.fromMarkdown(markdown)).toBe(markdown);
+      expect(await listConverter.fromMarkdown(markdown)).toBe(markdown);
     });
 
-    it("separates a nested ordered list that doesn't start at 1", () => {
-      const result = listConverter.fromMarkdown(
+    it("separates a nested ordered list that doesn't start at 1", async () => {
+      const result = await listConverter.fromMarkdown(
         "1. parent\n\n   3. child\n2. next"
       );
       expect(result).toBe("1. parent\n\n   3. child\n2. next");
-      const list = parseMarkdown(result).children[0] as List;
-      expect(list.children[0]?.children.map((child) => child.type)).toEqual([
-        "paragraph",
-        "list",
-      ]);
+      expect(await firstItemChildTags(result)).toEqual(["p", "ol"]);
     });
 
-    it("separates a nested list from HTML before it", () => {
-      const result = commonMarkConverter.fromMarkdown(
+    it("keeps a nested list after HTML inside the item", async () => {
+      // Raw HTML is plain text in the parser's default setup, so it reads as
+      // a paragraph.
+      const result = await commonMarkConverter.fromMarkdown(
         "- <div>\n  content\n  </div>\n\n  - child\n- next"
       );
-      const list = parseMarkdown(result).children[0] as List;
-      expect(list.children[0]?.children.map((child) => child.type)).toEqual([
-        "html",
-        "list",
-      ]);
+      expect(await firstItemChildTags(result)).toEqual(["p", "ul"]);
     });
 
-    it("leaves later lines of a multi-line block unindented by default", () => {
-      const result = listConverter.fromMarkdown("- item\n\n  ```\n  x\n  ```");
+    it("leaves later lines of a multi-line block unindented by default", async () => {
+      const result = await listConverter.fromMarkdown(
+        "- item\n\n  ```\n  x\n  ```"
+      );
       expect(result).toBe("- item\n\n  ```\nx\n```");
     });
 
-    it("leaves later lines unindented in nested items by default", () => {
-      const result = listConverter.fromMarkdown(
+    it("leaves later lines unindented in nested items by default", async () => {
+      const result = await listConverter.fromMarkdown(
         "- parent\n  - item\n\n    ```\n    x\n\n    y\n    ```"
       );
       expect(result).toBe("- parent\n  - item\n\n    ```\nx\n\ny\n```");
     });
 
-    it("indents every line of a multi-line block when enabled", () => {
+    it("indents every line of a multi-line block when enabled", async () => {
       const markdown = "- item\n\n  ```\n  x\n\n  y\n  ```\n- next";
-      expect(commonMarkConverter.fromMarkdown(markdown)).toBe(markdown);
+      expect(await commonMarkConverter.fromMarkdown(markdown)).toBe(markdown);
     });
 
     it("treats a carriage return as a line break when indenting", () => {
       const ast = root([
-        {
-          type: "list",
-          ordered: false,
-          children: [
-            {
-              type: "listItem",
-              children: [paragraph([text("item")]), codeBlock("x\ry")],
-            },
-          ],
-        },
+        ["ul", {}, ["li", {}, paragraph([text("item")]), codeBlock("x\ry")]],
       ]);
       expect(commonMarkConverter.fromAst(ast)).toBe(
         "- item\n\n  ```\n  x\n  y\n  ```"
       );
     });
 
-    it("round-trips its output through the Markdown parser when enabled", () => {
+    it("round-trips its output through the Markdown parser when enabled", async () => {
       const markdown =
         "1. parent\n\n   more\n\n   ```\n   code\n   ```\n   - child\n2. next";
-      const once = commonMarkConverter.fromMarkdown(markdown);
+      const once = await commonMarkConverter.fromMarkdown(markdown);
       expect(once).toBe(markdown);
-      const list = parseMarkdown(once).children[0] as List;
-      expect(list.children).toHaveLength(2);
-      expect(list.children[0]?.children.map((child) => child.type)).toEqual([
-        "paragraph",
-        "paragraph",
-        "code",
-        "list",
+      const list = (await parseMarkdown(once)).nodes[0] as List;
+      expect(getNodeChildren(list)).toHaveLength(2);
+      expect(childTags(getNodeChildren(list)[0])).toEqual([
+        "p",
+        "p",
+        "pre",
+        "ul",
       ]);
     });
   });
@@ -1809,14 +1107,14 @@ describe("BaseFormatConverter", () => {
     class NodeConverterTestConverter extends BaseFormatConverter {
       fromAst(ast: Root): string {
         return this.fromAstWithNodeConverter(ast, (node) => {
-          if (node.type === "paragraph") {
-            return `[para:${toPlainText({ type: "root", children: [node] })}]`;
+          if (isParagraphNode(node)) {
+            return `[para:${toPlainText(root([node]))}]`;
           }
-          return toPlainText({ type: "root", children: [node] });
+          return toPlainText(root([node]));
         });
       }
 
-      toAst(inputText: string): Root {
+      toAst(inputText: string): Promise<Root> {
         return parseMarkdown(inputText);
       }
     }
@@ -1828,52 +1126,46 @@ describe("BaseFormatConverter", () => {
         paragraph([text("First")]),
         paragraph([text("Second")]),
       ]);
-      const result = nodeConverter.fromAst(ast);
-      expect(result).toBe("[para:First]\n\n[para:Second]");
+      expect(nodeConverter.fromAst(ast)).toBe("[para:First]\n\n[para:Second]");
     });
 
     it("handles single paragraph", () => {
       const ast = root([paragraph([text("Only")])]);
-      const result = nodeConverter.fromAst(ast);
-      expect(result).toBe("[para:Only]");
+      expect(nodeConverter.fromAst(ast)).toBe("[para:Only]");
     });
 
     it("handles empty AST", () => {
-      const ast = root([]);
-      const result = nodeConverter.fromAst(ast);
-      expect(result).toBe("");
+      expect(nodeConverter.fromAst(root([]))).toBe("");
     });
   });
 
   describe("cardToFallbackText via renderPostable", () => {
-    it("handles card with section children", () => {
+    it("handles card with section children", async () => {
       const card = Card({
         children: [
           Section([CardText("Section content"), CardText("More content")]),
         ],
       });
-      const result = converter.renderPostable({ card });
+      const result = await converter.renderPostable({ card });
       expect(result).toContain("Section content");
       expect(result).toContain("More content");
     });
 
-    it("handles card with only title (no children)", () => {
+    it("handles card with only title (no children)", async () => {
       const card = Card({ title: "Title Only" });
-      const result = converter.renderPostable({ card });
-      expect(result).toBe("**Title Only**");
+      expect(await converter.renderPostable({ card })).toBe("**Title Only**");
     });
 
-    it("handles card with divider child (returns null for divider)", () => {
+    it("handles card with divider child (returns null for divider)", async () => {
       const card = Card({
         title: "With Divider",
         children: [Divider()],
       });
-      const result = converter.renderPostable({ card });
       // Divider falls to default case and returns null, so only title
-      expect(result).toBe("**With Divider**");
+      expect(await converter.renderPostable({ card })).toBe("**With Divider**");
     });
 
-    it("falls back to a text input's label", () => {
+    it("falls back to a text input's label", async () => {
       // Adapters that inherit this converter (github, instagram, linear,
       // messenger, web) have no card-input rendering, so the label is the only
       // thing that tells the reader what the card was asking for.
@@ -1881,11 +1173,12 @@ describe("BaseFormatConverter", () => {
         title: "Deploy?",
         children: [TextInput({ id: "notes", label: "Notes" })],
       });
-      const result = converter.renderPostable({ card });
-      expect(result).toBe("**Deploy?**\nNotes");
+      expect(await converter.renderPostable({ card })).toBe(
+        "**Deploy?**\nNotes"
+      );
     });
 
-    it("handles card with mixed children including actions (excluded)", () => {
+    it("handles card with mixed children including actions (excluded)", async () => {
       const card = Card({
         title: "Mixed",
         children: [
@@ -1894,7 +1187,7 @@ describe("BaseFormatConverter", () => {
           Fields([Field({ label: "Key", value: "Val" })]),
         ],
       });
-      const result = converter.renderPostable({ card });
+      const result = await converter.renderPostable({ card });
       expect(result).toContain("Visible text");
       expect(result).not.toContain("OK");
       expect(result).toContain("**Key**: Val");
@@ -1922,51 +1215,47 @@ describe("BaseFormatConverter", () => {
 // ============================================================================
 
 describe("parseMarkdown (tables)", () => {
-  it("parses GFM tables", () => {
-    const ast = parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
-    expect(ast.children[0].type).toBe("table");
+  it("parses GFM tables", async () => {
+    const ast = await parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
+    expect(getNodeTag(ast.nodes[0])).toBe("table");
   });
 
-  it("parses table with multiple rows", () => {
+  it("parses table with multiple rows", async () => {
     const md = "| Name | Age |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |";
-    const ast = parseMarkdown(md);
-    const table = ast.children[0] as import("mdast").Table;
-    expect(table.type).toBe("table");
-    expect(table.children).toHaveLength(3); // header + 2 data rows
+    const table = (await parseMarkdown(md)).nodes[0];
+    expect(childTags(table)).toEqual(["thead", "tbody"]);
+    const [head, body] = getNodeChildren(table);
+    expect(getNodeChildren(head)).toHaveLength(1);
+    expect(getNodeChildren(body)).toHaveLength(2);
   });
 });
 
 describe("table type guards", () => {
-  it("isTableNode identifies table nodes", () => {
-    const ast = parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
-    const tableNode = ast.children[0] as import("mdast").Content;
-    expect(isTableNode(tableNode)).toBe(true);
-    expect(isTableNode({ type: "paragraph" } as import("mdast").Content)).toBe(
-      false
-    );
+  const firstRow = async () => {
+    const ast = await parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
+    return getNodeChildren(getNodeChildren(ast.nodes[0])[0])[0];
+  };
+
+  it("isTableNode identifies table nodes", async () => {
+    const ast = await parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
+    expect(isTableNode(ast.nodes[0])).toBe(true);
+    expect(isTableNode(paragraph([]))).toBe(false);
   });
 
-  it("isTableRowNode identifies table row nodes", () => {
-    const ast = parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
-    const table = ast.children[0] as import("mdast").Table;
-    const row = table.children[0] as import("mdast").Content;
-    expect(isTableRowNode(row)).toBe(true);
+  it("isTableRowNode identifies table row nodes", async () => {
+    expect(isTableRowNode(await firstRow())).toBe(true);
   });
 
-  it("isTableCellNode identifies table cell nodes", () => {
-    const ast = parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
-    const table = ast.children[0] as import("mdast").Table;
-    const row = table.children[0];
-    const cell = row.children[0] as import("mdast").Content;
+  it("isTableCellNode identifies table cell nodes", async () => {
+    const cell = getNodeChildren(await firstRow())[0];
     expect(isTableCellNode(cell)).toBe(true);
   });
 });
 
 describe("tableToAscii", () => {
-  it("renders a simple table", () => {
-    const ast = parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
-    const table = ast.children[0] as import("mdast").Table;
-    const result = tableToAscii(table);
+  it("renders a simple table", async () => {
+    const ast = await parseMarkdown("| A | B |\n|---|---|\n| 1 | 2 |");
+    const result = tableToAscii(ast.nodes[0] as TableNode);
     expect(result).toContain("A");
     expect(result).toContain("B");
     expect(result).toContain("1");
@@ -1975,12 +1264,10 @@ describe("tableToAscii", () => {
     expect(result).toContain("-|");
   });
 
-  it("pads columns to equal width", () => {
+  it("pads columns to equal width", async () => {
     const md = "| Name | Age |\n|------|-----|\n| Alice | 30 |\n| Bob | 25 |";
-    const ast = parseMarkdown(md);
-    const table = ast.children[0] as import("mdast").Table;
-    const result = tableToAscii(table);
-    const lines = result.split("\n");
+    const ast = await parseMarkdown(md);
+    const lines = tableToAscii(ast.nodes[0] as TableNode).split("\n");
     // Header
     expect(lines[0]).toBe("Name  | Age");
     // Separator
@@ -1991,11 +1278,7 @@ describe("tableToAscii", () => {
   });
 
   it("handles empty table", () => {
-    const table: import("mdast").Table = {
-      type: "table",
-      children: [],
-    };
-    expect(tableToAscii(table)).toBe("");
+    expect(tableToAscii(["table", {}])).toBe("");
   });
 });
 
@@ -2037,159 +1320,62 @@ describe("tableElementToAscii", () => {
 // ============================================================================
 
 describe("Type guards", () => {
-  describe("isTextNode", () => {
-    it("returns true for text nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isTextNode(node)).toBe(true);
-    });
-
-    it("returns false for non-text nodes", () => {
-      const node: Content = { type: "paragraph", children: [] };
-      expect(isTextNode(node)).toBe(false);
-    });
-  });
-
-  describe("isParagraphNode", () => {
-    it("returns true for paragraph nodes", () => {
-      const node: Content = { type: "paragraph", children: [] };
-      expect(isParagraphNode(node)).toBe(true);
-    });
-
-    it("returns false for non-paragraph nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isParagraphNode(node)).toBe(false);
-    });
-  });
-
-  describe("isStrongNode", () => {
-    it("returns true for strong nodes", () => {
-      const node: Content = {
-        type: "strong",
-        children: [{ type: "text", value: "bold" }],
-      };
-      expect(isStrongNode(node)).toBe(true);
-    });
-
-    it("returns false for non-strong nodes", () => {
-      const node: Content = {
-        type: "emphasis",
-        children: [{ type: "text", value: "italic" }],
-      };
-      expect(isStrongNode(node)).toBe(false);
-    });
-  });
-
-  describe("isEmphasisNode", () => {
-    it("returns true for emphasis nodes", () => {
-      const node: Content = {
-        type: "emphasis",
-        children: [{ type: "text", value: "italic" }],
-      };
-      expect(isEmphasisNode(node)).toBe(true);
-    });
-
-    it("returns false for non-emphasis nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isEmphasisNode(node)).toBe(false);
-    });
-  });
-
-  describe("isDeleteNode", () => {
-    it("returns true for delete (strikethrough) nodes", () => {
-      const node: Content = {
-        type: "delete",
-        children: [{ type: "text", value: "deleted" }],
-      };
-      expect(isDeleteNode(node)).toBe(true);
-    });
-
-    it("returns false for non-delete nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isDeleteNode(node)).toBe(false);
-    });
-  });
-
-  describe("isInlineCodeNode", () => {
-    it("returns true for inline code nodes", () => {
-      const node: Content = { type: "inlineCode", value: "code" };
-      expect(isInlineCodeNode(node)).toBe(true);
-    });
-
-    it("returns false for non-inline-code nodes", () => {
-      const node: Content = { type: "code", value: "block code" };
-      expect(isInlineCodeNode(node)).toBe(false);
-    });
-  });
-
-  describe("isCodeNode", () => {
-    it("returns true for code block nodes", () => {
-      const node: Content = { type: "code", value: "const x = 1" };
-      expect(isCodeNode(node)).toBe(true);
-    });
-
-    it("returns false for inline code nodes", () => {
-      const node: Content = { type: "inlineCode", value: "code" };
-      expect(isCodeNode(node)).toBe(false);
-    });
-  });
-
-  describe("isLinkNode", () => {
-    it("returns true for link nodes", () => {
-      const node: Content = {
-        type: "link",
-        url: "https://example.com",
-        children: [{ type: "text", value: "link" }],
-      };
-      expect(isLinkNode(node)).toBe(true);
-    });
-
-    it("returns false for non-link nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isLinkNode(node)).toBe(false);
-    });
-  });
-
-  describe("isBlockquoteNode", () => {
-    it("returns true for blockquote nodes", () => {
-      const node: Content = {
-        type: "blockquote",
-        children: [
-          { type: "paragraph", children: [{ type: "text", value: "quoted" }] },
-        ],
-      };
-      expect(isBlockquoteNode(node)).toBe(true);
-    });
-
-    it("returns false for non-blockquote nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isBlockquoteNode(node)).toBe(false);
-    });
+  it.each([
+    ["isTextNode", isTextNode, text("hello"), paragraph([])],
+    ["isParagraphNode", isParagraphNode, paragraph([]), text("hello")],
+    [
+      "isStrongNode",
+      isStrongNode,
+      strong([text("bold")]),
+      emphasis([text("italic")]),
+    ],
+    ["isEmphasisNode", isEmphasisNode, emphasis([text("italic")]), "hello"],
+    ["isDeleteNode", isDeleteNode, strikethrough([text("deleted")]), "hello"],
+    [
+      "isInlineCodeNode",
+      isInlineCodeNode,
+      inlineCode("code"),
+      codeBlock("block code"),
+    ],
+    ["isCodeNode", isCodeNode, codeBlock("const x = 1"), inlineCode("code")],
+    [
+      "isLinkNode",
+      isLinkNode,
+      link("https://example.com", [text("link")]),
+      "hello",
+    ],
+    [
+      "isBlockquoteNode",
+      isBlockquoteNode,
+      blockquote([paragraph([text("quoted")])]),
+      "hello",
+    ],
+  ] as const)("%s tells matching nodes from others", (_name, guard, match, other) => {
+    expect(guard(match)).toBe(true);
+    expect(guard(other)).toBe(false);
   });
 
   describe("isListNode", () => {
-    it("returns true for list nodes", () => {
-      const ast = parseMarkdown("- item 1\n- item 2");
-      const listNode = ast.children[0] as Content;
-      expect(isListNode(listNode)).toBe(true);
+    it("returns true for list nodes", async () => {
+      expect(
+        isListNode((await parseMarkdown("- item 1\n- item 2")).nodes[0])
+      ).toBe(true);
+      expect(isListNode((await parseMarkdown("1. item")).nodes[0])).toBe(true);
     });
 
     it("returns false for non-list nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isListNode(node)).toBe(false);
+      expect(isListNode(text("hello"))).toBe(false);
     });
   });
 
   describe("isListItemNode", () => {
-    it("returns true for list item nodes", () => {
-      const ast = parseMarkdown("- item 1");
-      const listNode = ast.children[0] as { children: Content[] };
-      const listItemNode = listNode.children[0];
-      expect(isListItemNode(listItemNode)).toBe(true);
+    it("returns true for list item nodes", async () => {
+      const list = (await parseMarkdown("- item 1")).nodes[0];
+      expect(isListItemNode(getNodeChildren(list)[0])).toBe(true);
     });
 
     it("returns false for non-list-item nodes", () => {
-      const node: Content = { type: "text", value: "hello" };
-      expect(isListItemNode(node)).toBe(false);
+      expect(isListItemNode(text("hello"))).toBe(false);
     });
   });
 });
@@ -2200,95 +1386,67 @@ describe("Type guards", () => {
 
 describe("getNodeChildren", () => {
   it("returns children for paragraph node", () => {
-    const node = paragraph([text("hello"), text(" world")]);
-    const children = getNodeChildren(node);
-    expect(children).toHaveLength(2);
-    expect((children[0] as { value: string }).value).toBe("hello");
+    const children = getNodeChildren(
+      paragraph([text("hello"), text(" world")])
+    );
+    expect(children).toEqual(["hello", " world"]);
   });
 
   it("returns children for strong node", () => {
-    const node = strong([text("bold")]);
-    const children = getNodeChildren(node);
-    expect(children).toHaveLength(1);
+    expect(getNodeChildren(strong([text("bold")]))).toHaveLength(1);
   });
 
   it("returns empty array for text node (no children)", () => {
-    const node = text("hello");
-    const children = getNodeChildren(node);
-    expect(children).toEqual([]);
+    expect(getNodeChildren(text("hello"))).toEqual([]);
   });
 
-  it("returns empty array for inline code node (no children)", () => {
-    const node = inlineCode("code");
-    const children = getNodeChildren(node);
-    expect(children).toEqual([]);
+  it("returns the code text for inline code node", () => {
+    expect(getNodeChildren(inlineCode("code"))).toEqual(["code"]);
   });
 
-  it("returns empty array for code block node (no children)", () => {
-    const node = codeBlock("code", "js");
-    const children = getNodeChildren(node);
-    expect(children).toEqual([]);
+  it("returns the inner code element for code block node", () => {
+    expect(childTags(codeBlock("code", "js"))).toEqual(["code"]);
   });
 
   it("returns children for blockquote node", () => {
     const node = blockquote([paragraph([text("quoted")])]);
-    const children = getNodeChildren(node);
-    expect(children).toHaveLength(1);
-    expect(children[0].type).toBe("paragraph");
+    expect(childTags(node)).toEqual(["p"]);
   });
 
   it("returns children for emphasis node", () => {
-    const node = emphasis([text("italic")]);
-    const children = getNodeChildren(node);
-    expect(children).toHaveLength(1);
+    expect(getNodeChildren(emphasis([text("italic")]))).toHaveLength(1);
   });
 
   it("returns children for link node", () => {
     const node = link("https://example.com", [text("link")]);
-    const children = getNodeChildren(node);
-    expect(children).toHaveLength(1);
+    expect(getNodeChildren(node)).toHaveLength(1);
   });
 });
 
 describe("getNodeValue", () => {
   it("returns value for text node", () => {
-    const node = text("hello");
-    expect(getNodeValue(node)).toBe("hello");
+    expect(getNodeValue(text("hello"))).toBe("hello");
   });
 
   it("returns value for inline code node", () => {
-    const node = inlineCode("const x = 1");
-    expect(getNodeValue(node)).toBe("const x = 1");
+    expect(getNodeValue(inlineCode("const x = 1"))).toBe("const x = 1");
   });
 
   it("returns value for code block node", () => {
-    const node = codeBlock("function() {}");
-    expect(getNodeValue(node)).toBe("function() {}");
+    expect(getNodeValue(codeBlock("function() {}"))).toBe("function() {}");
   });
 
-  it("returns empty string for paragraph node (no value)", () => {
-    const node = paragraph([text("hello")]);
-    expect(getNodeValue(node)).toBe("");
-  });
-
-  it("returns empty string for strong node (no value)", () => {
-    const node = strong([text("bold")]);
-    expect(getNodeValue(node)).toBe("");
-  });
-
-  it("returns empty string for emphasis node (no value)", () => {
-    const node = emphasis([text("italic")]);
-    expect(getNodeValue(node)).toBe("");
-  });
-
-  it("returns empty string for blockquote (no value)", () => {
-    const node = blockquote([paragraph([text("quoted")])]);
+  it.each([
+    ["paragraph", paragraph([text("hello")])],
+    ["strong", strong([text("bold")])],
+    ["emphasis", emphasis([text("italic")])],
+    ["blockquote", blockquote([paragraph([text("quoted")])])],
+  ])("returns empty string for %s node (no value)", (_name, node) => {
     expect(getNodeValue(node)).toBe("");
   });
 
   it("returns value for text with empty string", () => {
-    const node = text("");
-    expect(getNodeValue(node)).toBe("");
+    expect(getNodeValue(text(""))).toBe("");
   });
 });
 
@@ -2297,39 +1455,28 @@ describe("getNodeValue", () => {
 // ============================================================================
 
 describe("parseMarkdown edge cases", () => {
-  it("handles markdown with only whitespace", () => {
-    const ast = parseMarkdown("   ");
-    expect(ast.type).toBe("root");
-    // Whitespace-only may produce empty or single-element AST
-    expect(ast.children.length).toBeGreaterThanOrEqual(0);
+  it("handles markdown with only whitespace", async () => {
+    const ast = await parseMarkdown("   ");
+    expect(ast.nodes).toHaveLength(0);
   });
 
-  it("handles markdown with special characters", () => {
-    const ast = parseMarkdown('Hello <world> & "quotes"');
-    expect(ast.type).toBe("root");
-    const plainText = toPlainText(ast);
-    expect(plainText).toContain("Hello");
+  it("handles markdown with special characters", async () => {
+    const ast = await parseMarkdown('Hello <world> & "quotes"');
+    expect(toPlainText(ast)).toBe('Hello <world> & "quotes"');
   });
 
-  it("handles very long markdown input", () => {
-    const longText = "word ".repeat(1000);
-    const ast = parseMarkdown(longText);
-    expect(ast.type).toBe("root");
-    expect(ast.children.length).toBeGreaterThan(0);
+  it("handles very long markdown input", async () => {
+    const ast = await parseMarkdown("word ".repeat(1000));
+    expect(ast.nodes.length).toBeGreaterThan(0);
   });
 
-  it("handles markdown with mixed heading levels", () => {
-    const ast = parseMarkdown("# H1\n## H2\n### H3");
-    expect(ast.children).toHaveLength(3);
-    expect(ast.children[0].type).toBe("heading");
-    expect(ast.children[1].type).toBe("heading");
-    expect(ast.children[2].type).toBe("heading");
+  it("handles markdown with mixed heading levels", async () => {
+    const ast = await parseMarkdown("# H1\n## H2\n### H3");
+    expect(ast.nodes.map(getNodeTag)).toEqual(["h1", "h2", "h3"]);
   });
 
-  it("handles markdown with thematic break (hr)", () => {
-    const ast = parseMarkdown("before\n\n---\n\nafter");
-    expect(ast.children.length).toBeGreaterThanOrEqual(3);
-    const types = ast.children.map((c) => c.type);
-    expect(types).toContain("thematicBreak");
+  it("handles markdown with thematic break (hr)", async () => {
+    const ast = await parseMarkdown("before\n\n---\n\nafter");
+    expect(ast.nodes.map(getNodeTag)).toEqual(["p", "hr", "p"]);
   });
 });

@@ -1137,9 +1137,9 @@ export class LinearAdapter
   /**
    * Parse an agent session event from a Linear webhook into a chat message, if applicable.
    */
-  protected parseMessageFromAgentSessionEvent(
+  protected async parseMessageFromAgentSessionEvent(
     payload: AgentSessionEventWebhookPayload
-  ): Message<LinearRawMessage> | null {
+  ): Promise<Message<LinearRawMessage> | null> {
     const issueId =
       payload.agentSession.issueId ?? payload.agentSession.issue?.id;
     if (!issueId) {
@@ -1441,7 +1441,7 @@ export class LinearAdapter
         return;
       }
 
-      this.handleCommentCreated(payload, options);
+      return this.handleCommentCreated(payload, options);
     });
   }
 
@@ -1457,7 +1457,7 @@ export class LinearAdapter
         return;
       }
 
-      this.handleAgentSessionEvent(payload, options);
+      return this.handleAgentSessionEvent(payload, options);
     });
   }
 
@@ -1502,10 +1502,10 @@ export class LinearAdapter
    * - If the comment has a parentId, it's a reply -> thread under the parent (root comment)
    * - If no parentId, this is a root comment -> thread under this comment's own ID
    */
-  protected handleCommentCreated(
+  protected async handleCommentCreated(
     payload: CommentWebhookPayload,
     options?: WebhookOptions
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       this.logger.warn("Chat instance not initialized, ignoring comment");
       return;
@@ -1553,7 +1553,7 @@ export class LinearAdapter
     };
 
     // Build message
-    const message = this.parseMessage({
+    const message = await this.parseMessage({
       kind: "comment",
       comment,
       organizationId: payload.organizationId,
@@ -1567,10 +1567,10 @@ export class LinearAdapter
    * - A user posting a new message in an existing agent session thread (prompted action)
    * - A user mentioning the bot in an issue, creating a new agent session and posting the first message (created action)
    */
-  protected handleAgentSessionEvent(
+  protected async handleAgentSessionEvent(
     payload: AgentSessionEventWebhookPayload,
     options?: WebhookOptions
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       this.logger.warn(
         "Chat instance not initialized, ignoring agent session event"
@@ -1578,7 +1578,7 @@ export class LinearAdapter
       return;
     }
 
-    const message = this.parseMessageFromAgentSessionEvent(payload);
+    const message = await this.parseMessageFromAgentSessionEvent(payload);
     if (!message) {
       this.logger.warn(
         "Unable to build message for Linear agent session event",
@@ -1628,7 +1628,10 @@ export class LinearAdapter
     await this.ensureValidToken();
     const client = this.getClient();
     const decoded = this.decodeThreadId(threadId);
-    const body = renderMessageToLinearMarkdown(message, this.formatConverter);
+    const body = await renderMessageToLinearMarkdown(
+      message,
+      this.formatConverter
+    );
 
     if (decoded.agentSessionId) {
       assertAgentSessionThread(decoded);
@@ -1726,7 +1729,10 @@ export class LinearAdapter
       );
     }
 
-    const body = renderMessageToLinearMarkdown(message, this.formatConverter);
+    const body = await renderMessageToLinearMarkdown(
+      message,
+      this.formatConverter
+    );
 
     // Update the comment via Linear SDK
     const commentPayload = await client.updateComment(messageId, {
@@ -2479,10 +2485,11 @@ export class LinearAdapter
   /**
    * Parse platform message format to normalized format.
    */
-  parseMessage(raw: LinearRawMessage): Message<LinearRawMessage> {
+  async parseMessage(
+    raw: LinearRawMessage
+  ): Promise<Message<LinearRawMessage>> {
     const text = raw.comment.body;
-    const formatted: FormattedContent =
-      this.formatConverter.parseIncoming(text).formatted;
+    const { formatted } = await this.formatConverter.parseIncoming(text);
 
     return new Message<LinearRawMessage>({
       id: raw.comment.id,
@@ -2527,7 +2534,7 @@ export class LinearAdapter
   /**
    * Render formatted content to Linear markdown.
    */
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 

@@ -3348,7 +3348,7 @@ describe("ThreadImpl", () => {
         .mockResolvedValue(mockScheduleResult());
 
       const astMsg = {
-        ast: { type: "root" as const, children: [] },
+        ast: { nodes: [], frontmatter: {}, meta: {} },
       };
       await thread.schedule(astMsg, { postAt: futureDate });
 

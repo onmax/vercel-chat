@@ -1,6 +1,13 @@
 import { ValidationError } from "@chat-adapter/shared";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { Chat, type Message, parseMarkdown, type StreamChunk } from "chat";
+import {
+  Chat,
+  type Message,
+  paragraph,
+  parseMarkdown,
+  root,
+  type StreamChunk,
+} from "chat";
 import { describe, expect, it, vi } from "vitest";
 import { createWebAdapter, WebAdapter } from "./index";
 import { createSseResponse, webProtocols } from "./protocol";
@@ -105,19 +112,19 @@ function buildChat(opts: {
 }
 
 describe("createWebAdapter — construction", () => {
-  it("throws when userName is missing", () => {
+  it("throws when userName is missing", async () => {
     expect(() =>
       createWebAdapter({ getUser: () => TEST_USER } as never)
     ).toThrow(ValidationError);
   });
 
-  it("throws when getUser is missing", () => {
+  it("throws when getUser is missing", async () => {
     expect(() => createWebAdapter({ userName: "testbot" } as never)).toThrow(
       ValidationError
     );
   });
 
-  it("constructs successfully with required options", () => {
+  it("constructs successfully with required options", async () => {
     const adapter = createWebAdapter({
       userName: "testbot",
       getUser: () => TEST_USER,
@@ -135,25 +142,25 @@ describe("WebAdapter — thread id encoding", () => {
     getUser: () => TEST_USER,
   });
 
-  it("encodes and decodes thread ids round-trip", () => {
+  it("encodes and decodes thread ids round-trip", async () => {
     const data = { userId: "u-test", conversationId: "abc-123" };
     const encoded = adapter.encodeThreadId(data);
     expect(encoded).toBe("web:u-test:abc-123");
     expect(adapter.decodeThreadId(encoded)).toEqual(data);
   });
 
-  it("rejects malformed thread ids", () => {
+  it("rejects malformed thread ids", async () => {
     expect(() => adapter.decodeThreadId("not-a-web-thread")).toThrow();
     expect(() => adapter.decodeThreadId("slack:C123:1.2")).toThrow();
   });
 
-  it("uses thread id as channel id (no separate channel concept on web)", () => {
+  it("uses thread id as channel id (no separate channel concept on web)", async () => {
     expect(adapter.channelIdFromThreadId("web:u-test:abc")).toBe(
       "web:u-test:abc"
     );
   });
 
-  it("reports isDM as true for any thread", () => {
+  it("reports isDM as true for any thread", async () => {
     expect(adapter.isDM("web:u-test:any")).toBe(true);
   });
 });
@@ -512,7 +519,7 @@ describe("WebAdapter — end-to-end handler dispatch", () => {
 
     const [thread, message] = directHandler.mock.calls[0];
     expect(message.text).toBe("hello **world**");
-    expect(message.formatted).toEqual(parseMarkdown("hello **world**"));
+    expect(message.formatted).toEqual(await parseMarkdown("hello **world**"));
     expect(message.author.userId).toBe("u-test");
     expect(message.author.isMe).toBe(false);
     expect(thread.id).toBe("web:u-test:conv-1");
@@ -711,7 +718,7 @@ describe("WebAdapter — AG-UI protocol", () => {
     };
   }
 
-  it("throws on an unknown protocol", () => {
+  it("throws on an unknown protocol", async () => {
     expect(() =>
       createWebAdapter({
         userName: "testbot",
@@ -901,18 +908,10 @@ describe("WebAdapter — AG-UI protocol", () => {
   });
 });
 
-function unparsed(value: string) {
-  return {
-    type: "root",
-    children: [{ type: "paragraph", children: [{ type: "text", value }] }],
-  };
-}
-
 const NORMAL_MARKDOWN =
   "**bold** text\n\n> quoted\n\n| a | b |\n| - | - |\n| 1 | 2 |";
-const UNPARSED_CASES = [
+const PATHOLOGICAL_CASES = [
   ["too many emphasis markers", "*a".repeat(8192)],
-  ["nesting too deep", ">".repeat(6000)],
   ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
   ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
 ];
@@ -940,20 +939,31 @@ describe("WebAdapter — inbound markdown parsing", () => {
     const [message] = messages;
 
     expect(message.text).toBe(NORMAL_MARKDOWN);
-    expect(message.formatted).toEqual(parseMarkdown(NORMAL_MARKDOWN));
+    expect(message.formatted).toEqual(await parseMarkdown(NORMAL_MARKDOWN));
   });
 
   it.each(
-    UNPARSED_CASES
-  )("keeps a user message with %s as plain text", async (_label, text) => {
+    PATHOLOGICAL_CASES
+  )("parses a user message with %s", async (_label, text) => {
     const { messages, status } = await deliver(text);
     expect(status).toBe(200);
     expect(messages).toHaveLength(1);
     const [message] = messages;
 
     expect(message.text).toBe(text);
-    expect(message.formatted).toEqual(unparsed(text));
+    expect(message.formatted).toEqual(await parseMarkdown(text));
     expect(() => JSON.stringify(message.formatted)).not.toThrow();
+  });
+
+  it("keeps a user message with nesting too deep as plain text", async () => {
+    const text = ">".repeat(6000);
+    const { messages, status } = await deliver(text);
+    expect(status).toBe(200);
+    expect(messages).toHaveLength(1);
+    const [message] = messages;
+
+    expect(message.text).toBe(text);
+    expect(message.formatted).toEqual(root([paragraph([text])]));
   });
 });
 
@@ -963,20 +973,30 @@ describe("WebAdapter.parseMessage — inbound markdown parsing", () => {
     getUser: () => TEST_USER,
   });
 
-  it("parses markdown in a user message", () => {
-    const message = adapter.parseMessage(makeUserMessage(NORMAL_MARKDOWN));
+  it("parses markdown in a user message", async () => {
+    const message = await adapter.parseMessage(
+      makeUserMessage(NORMAL_MARKDOWN)
+    );
 
     expect(message.text).toBe(NORMAL_MARKDOWN);
-    expect(message.formatted).toEqual(parseMarkdown(NORMAL_MARKDOWN));
+    expect(message.formatted).toEqual(await parseMarkdown(NORMAL_MARKDOWN));
   });
 
   it.each(
-    UNPARSED_CASES
-  )("keeps a user message with %s as plain text", (_label, text) => {
-    const message = adapter.parseMessage(makeUserMessage(text));
+    PATHOLOGICAL_CASES
+  )("parses a user message with %s", async (_label, text) => {
+    const message = await adapter.parseMessage(makeUserMessage(text));
 
     expect(message.text).toBe(text);
-    expect(message.formatted).toEqual(unparsed(text));
+    expect(message.formatted).toEqual(await parseMarkdown(text));
     expect(() => JSON.stringify(message.formatted)).not.toThrow();
+  });
+
+  it("keeps a user message with nesting too deep as plain text", async () => {
+    const text = ">".repeat(6000);
+    const message = await adapter.parseMessage(makeUserMessage(text));
+
+    expect(message.text).toBe(text);
+    expect(message.formatted).toEqual(root([paragraph([text])]));
   });
 });

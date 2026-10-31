@@ -179,7 +179,7 @@ export class TeamsGraphReader {
         hasMoreMessages,
       });
 
-      const messages = this.mapGraphMessages(graphMessages, threadId);
+      const messages = await this.mapGraphMessages(graphMessages, threadId);
 
       let nextCursor: string | undefined;
       if (hasMoreMessages && graphMessages.length > 0) {
@@ -271,7 +271,7 @@ export class TeamsGraphReader {
         hasMoreMessages = graphMessages.length >= limit;
       }
 
-      const messages = this.mapGraphMessages(graphMessages, channelId);
+      const messages = await this.mapGraphMessages(graphMessages, channelId);
 
       let nextCursor: string | undefined;
       if (hasMoreMessages && graphMessages.length > 0) {
@@ -427,8 +427,10 @@ export class TeamsGraphReader {
               id: msg.id as string,
               threadId,
               text: this.extractTextFromGraphMessage(msg),
-              formatted: this.deps.formatConverter.parseIncoming(
-                this.extractTextFromGraphMessage(msg)
+              formatted: (
+                await this.deps.formatConverter.parseIncoming(
+                  this.extractTextFromGraphMessage(msg)
+                )
               ).formatted,
               raw: msg,
               author: {
@@ -490,8 +492,10 @@ export class TeamsGraphReader {
               id: msg.id as string,
               threadId,
               text: this.extractTextFromGraphMessage(msg),
-              formatted: this.deps.formatConverter.parseIncoming(
-                this.extractTextFromGraphMessage(msg)
+              formatted: (
+                await this.deps.formatConverter.parseIncoming(
+                  this.extractTextFromGraphMessage(msg)
+                )
               ).formatted,
               raw: msg,
               author: {
@@ -637,11 +641,11 @@ export class TeamsGraphReader {
     throw new ValidationError("teams", "Invalid channel history cursor");
   }
 
-  private pageChannelMessages(
+  private async pageChannelMessages(
     graphMessages: GraphMessage[],
     channelId: string,
     options: FetchOptions
-  ): FetchResult<unknown> {
+  ): Promise<FetchResult<unknown>> {
     const direction = options.direction ?? "backward";
     const limit = options.limit || 50;
     const boundary = options.cursor
@@ -672,7 +676,7 @@ export class TeamsGraphReader {
         ? `teams-channel-history:${Buffer.from(JSON.stringify(edge.position)).toString("base64url")}`
         : undefined;
     return {
-      messages: this.mapGraphMessages(
+      messages: await this.mapGraphMessages(
         page.map(({ msg }) => msg),
         channelId
       ),
@@ -888,44 +892,48 @@ export class TeamsGraphReader {
   private mapGraphMessages(
     graphMessages: GraphMessage[],
     threadId: string
-  ): Message<unknown>[] {
-    return graphMessages
-      .filter((msg) => msg.id)
-      .map((msg) => {
-        const isFromBot =
-          msg.from?.application?.id === this.deps.botId ||
-          msg.from?.user?.id === this.deps.botId;
+  ): Promise<Message<unknown>[]> {
+    return Promise.all(
+      graphMessages
+        .filter((msg) => msg.id)
+        .map(async (msg) => {
+          const isFromBot =
+            msg.from?.application?.id === this.deps.botId ||
+            msg.from?.user?.id === this.deps.botId;
 
-        return new Message({
-          id: msg.id as string,
-          threadId,
-          text: this.extractTextFromGraphMessage(msg),
-          formatted: this.deps.formatConverter.parseIncoming(
-            this.extractTextFromGraphMessage(msg)
-          ).formatted,
-          raw: msg,
-          author: {
-            userId:
-              msg.from?.user?.id || msg.from?.application?.id || "unknown",
-            userName:
-              msg.from?.user?.displayName ||
-              msg.from?.application?.displayName ||
-              "unknown",
-            fullName:
-              msg.from?.user?.displayName ||
-              msg.from?.application?.displayName ||
-              "unknown",
-            isBot: !!msg.from?.application,
-            isMe: isFromBot,
-          },
-          metadata: {
-            dateSent: msg.createdDateTime
-              ? new Date(msg.createdDateTime)
-              : new Date(),
-            edited: !!msg.lastEditedDateTime,
-          },
-          attachments: this.extractAttachmentsFromGraphMessage(msg),
-        });
-      });
+          return new Message({
+            id: msg.id as string,
+            threadId,
+            text: this.extractTextFromGraphMessage(msg),
+            formatted: (
+              await this.deps.formatConverter.parseIncoming(
+                this.extractTextFromGraphMessage(msg)
+              )
+            ).formatted,
+            raw: msg,
+            author: {
+              userId:
+                msg.from?.user?.id || msg.from?.application?.id || "unknown",
+              userName:
+                msg.from?.user?.displayName ||
+                msg.from?.application?.displayName ||
+                "unknown",
+              fullName:
+                msg.from?.user?.displayName ||
+                msg.from?.application?.displayName ||
+                "unknown",
+              isBot: !!msg.from?.application,
+              isMe: isFromBot,
+            },
+            metadata: {
+              dateSent: msg.createdDateTime
+                ? new Date(msg.createdDateTime)
+                : new Date(),
+              edited: !!msg.lastEditedDateTime,
+            },
+            attachments: this.extractAttachmentsFromGraphMessage(msg),
+          });
+        })
+    );
   }
 }

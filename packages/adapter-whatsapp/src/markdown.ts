@@ -12,27 +12,23 @@
 
 import { normalizeCodeFences } from "@chat-adapter/shared";
 import {
-  type AdapterPostableMessage,
   BaseFormatConverter,
   type Content,
-  type Delete,
-  type Emphasis,
+  getCodeLanguage,
+  getNodeAttributes,
+  getNodeChildren,
+  getNodeTag,
+  getNodeValue,
+  isCodeNode,
+  isLinkNode,
+  isListNode,
+  isStrongNode,
   isTableNode,
+  isTextNode,
   parseMarkdown,
   type Root,
-  type Strong,
-  stringifyMarkdown,
-  type Text,
   tableToAscii,
-  walkAst,
 } from "chat";
-
-type Handlers = NonNullable<
-  NonNullable<Parameters<typeof stringifyMarkdown>[1]>["handlers"]
->;
-type HandleArgs = Parameters<NonNullable<Handlers["text"]>>;
-type State = HandleArgs[2];
-type Info = HandleArgs[3];
 
 // WhatsApp has no escape syntax, so text stays literal unless it would
 // otherwise turn into formatting.
@@ -43,29 +39,31 @@ const INLINE_PAIRS = {
   "`": /(?:^|[^\p{L}\p{N}])`(?=\S).*?\S`(?![\p{L}\p{N}])/mu,
 } as const;
 const BLOCK_START = /(^|\n)(?:([>*-])|(\d+)\.)(?= )/g;
+const HEADING_TAG = /^h[1-6]$/;
+const LINE_START = /^/gm;
+const MARKERS = { strong: "*", em: "_", del: "~" } as const;
 
 // Surrounding markers belong to formatting nodes, so they only bound the text.
 function boundary(char: string) {
   return char in INLINE_PAIRS ? " " : char;
 }
 
-function text(node: Text, _parent: unknown, _state: State, info: Info) {
-  const { before, after } = info;
-  const context = [boundary(before.slice(-1)), boundary(after.charAt(0))];
-  let value = node.value;
+function escapeText(value: string, before: string, after: string): string {
+  const context = [boundary(before), boundary(after)];
+  let escaped = value;
   for (const [marker, pair] of Object.entries(INLINE_PAIRS)) {
     const touchesMarker =
-      (value.startsWith(marker) && before.slice(-1) in INLINE_PAIRS) ||
-      (value.endsWith(marker) && after.charAt(0) in INLINE_PAIRS);
+      (escaped.startsWith(marker) && before in INLINE_PAIRS) ||
+      (escaped.endsWith(marker) && after in INLINE_PAIRS);
     if (
       touchesMarker ||
-      (value.includes(marker) &&
-        pair.test(`${context[0]}${value}${context[1]}`))
+      (escaped.includes(marker) &&
+        pair.test(`${context[0]}${escaped}${context[1]}`))
     ) {
-      value = value.replaceAll(marker, `\\${marker}`);
+      escaped = escaped.replaceAll(marker, `\\${marker}`);
     }
   }
-  return value.replace(
+  return escaped.replace(
     BLOCK_START,
     (match, lead: string, symbol?: string, digits?: string, offset = 0) => {
       if (offset === 0 && lead === "" && before !== "\n") {
@@ -76,80 +74,100 @@ function text(node: Text, _parent: unknown, _state: State, info: Info) {
   );
 }
 
-// `peek` keeps lookahead from serializing nested formatting a second time.
-function strong(node: Strong, _parent: unknown, state: State, info: Info) {
-  return `*${state.containerPhrasing(node, { ...info, before: "*", after: "*" })}*`;
+function fence(code: string, lang = ""): string {
+  return `\`\`\`${lang}\n${code}\n\`\`\``;
 }
-strong.peek = () => "*";
-
-function emphasis(node: Emphasis, _parent: unknown, state: State, info: Info) {
-  return `_${state.containerPhrasing(node, { ...info, before: "_", after: "_" })}_`;
-}
-emphasis.peek = () => "_";
-
-function strikethrough(
-  node: Delete,
-  _parent: unknown,
-  state: State,
-  info: Info
-) {
-  return `~${state.containerPhrasing(node, { ...info, before: "~", after: "~" })}~`;
-}
-strikethrough.peek = () => "~";
-
-const handlers: Handlers = {
-  text,
-  strong,
-  emphasis,
-  delete: strikethrough,
-  break: () => "\n",
-};
 
 export class WhatsAppFormatConverter extends BaseFormatConverter {
   /**
    * Convert an AST to WhatsApp markdown format.
    *
-   * Transforms unsupported nodes (headings, thematic breaks, tables)
-   * into WhatsApp-compatible equivalents and renders supported formatting
-   * directly in WhatsApp syntax.
+   * Renders supported formatting directly in WhatsApp syntax, and turns
+   * unsupported nodes into equivalents: headings into bold paragraphs,
+   * thematic breaks into a text separator, and tables into code blocks.
    */
   fromAst(ast: Root): string {
-    const transformed = walkAst(structuredClone(ast), (node: Content) => {
-      // Headings -> bold paragraph (flatten nested strong to avoid ***)
-      if (node.type === "heading") {
-        const heading = node as Content & { children: Content[] };
-        const children = heading.children.flatMap((child) =>
-          child.type === "strong"
-            ? (child as Content & { children: Content[] }).children
-            : [child]
-        );
-        return {
-          type: "paragraph",
-          children: [{ type: "strong", children }],
-        } as Content;
+    return this.fromAstWithNodeConverter(ast, (node) =>
+      this.blockToWhatsApp(node)
+    ).trim();
+  }
+
+  private blockToWhatsApp(node: Content): string {
+    const tag = getNodeTag(node);
+    if (tag && HEADING_TAG.test(tag)) {
+      // Flatten nested strong to avoid ***
+      const children = getNodeChildren(node).flatMap((child) =>
+        isStrongNode(child) ? getNodeChildren(child) : [child]
+      );
+      return `*${this.inlineToWhatsApp(children, "*", "*")}*`;
+    }
+    if (tag === "hr") {
+      return "━━━";
+    }
+    if (isTableNode(node)) {
+      return fence(tableToAscii(node));
+    }
+    if (isCodeNode(node)) {
+      return fence(getNodeValue(node), getCodeLanguage(node));
+    }
+    if (isListNode(node)) {
+      return this.renderList(node, 0, (child) => this.blockToWhatsApp(child));
+    }
+    if (tag === "blockquote") {
+      return getNodeChildren(node)
+        .map((child) => this.blockToWhatsApp(child))
+        .join("\n\n")
+        .replace(LINE_START, "> ");
+    }
+    return this.inlineToWhatsApp(getNodeChildren(node), "\n", "\n");
+  }
+
+  /**
+   * Render phrasing content. Text is escaped against the characters that end
+   * up next to it, so `before` and `after` are what surrounds the run.
+   */
+  private inlineToWhatsApp(
+    children: Content[],
+    before: string,
+    after: string
+  ): string {
+    const rendered = children.map((child) =>
+      isTextNode(child) ? child : this.inlineNodeToWhatsApp(child)
+    );
+    let result = "";
+    for (const [i, child] of children.entries()) {
+      if (isTextNode(child)) {
+        const next = rendered[i + 1]?.charAt(0) ?? after;
+        result += escapeText(child, result.slice(-1) || before, next);
+      } else {
+        result += rendered[i];
       }
-      // Thematic breaks -> text separator
-      if (node.type === "thematicBreak") {
-        return {
-          type: "paragraph",
-          children: [{ type: "text", value: "━━━" }],
-        } as Content;
-      }
-      // Tables -> code blocks (same as Telegram)
-      if (isTableNode(node)) {
-        return {
-          type: "code" as const,
-          value: tableToAscii(node),
-          lang: undefined,
-        } as Content;
-      }
-      return node;
-    });
-    return stringifyMarkdown(transformed, {
-      emphasis: "_",
-      bullet: "-",
-      handlers,
-    }).trim();
+    }
+    return result;
+  }
+
+  private inlineNodeToWhatsApp(node: Content): string {
+    const tag = getNodeTag(node);
+    const children = getNodeChildren(node);
+    if (tag === "strong" || tag === "em" || tag === "del") {
+      const marker = MARKERS[tag];
+      return `${marker}${this.inlineToWhatsApp(children, marker, marker)}${marker}`;
+    }
+    if (tag === "code") {
+      return `\`${getNodeValue(node)}\``;
+    }
+    if (tag === "br") {
+      return "\n";
+    }
+    if (tag === "img") {
+      const { alt = "", src = "" } = getNodeAttributes(node);
+      return `![${alt}](${src})`;
+    }
+    if (isLinkNode(node)) {
+      const label = this.inlineToWhatsApp(children, "[", "]");
+      return label === node[1].href ? label : `[${label}](${node[1].href})`;
+    }
+    return this.inlineToWhatsApp(children, "", "");
   }
 
   /**
@@ -160,45 +178,14 @@ export class WhatsAppFormatConverter extends BaseFormatConverter {
    * WhatsApp-specific formatting to standard markdown outside the fences,
    * then parses with the standard parser.
    */
-  toAst(markdown: string): Root {
+  toAst(markdown: string): Promise<Root> {
     return parseMarkdown(this.toStandardMarkdown(markdown));
-  }
-
-  /**
-   * Check the budget against the markdown that `toAst` parses, so the checks
-   * see the same code fences as the parser. The length limit still applies to
-   * the text as delivered.
-   */
-  protected override exceedsIncomingBudget(markdown: string): boolean {
-    return (
-      markdown.length > this.maxIncomingParseLength ||
-      super.exceedsIncomingBudget(this.toStandardMarkdown(markdown))
-    );
   }
 
   private toStandardMarkdown(markdown: string): string {
     return normalizeCodeFences(markdown, {
       convertText: (text) => this.fromWhatsAppFormat(text),
     });
-  }
-
-  /**
-   * Render a postable message to WhatsApp-compatible string.
-   */
-  override renderPostable(message: AdapterPostableMessage): string {
-    if (typeof message === "string") {
-      return message;
-    }
-    if ("raw" in message) {
-      return message.raw;
-    }
-    if ("markdown" in message) {
-      return this.fromMarkdown(message.markdown);
-    }
-    if ("ast" in message) {
-      return this.fromAst(message.ast);
-    }
-    return super.renderPostable(message);
   }
 
   /**

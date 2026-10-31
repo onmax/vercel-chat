@@ -761,16 +761,9 @@ describe("inbound markdown parsing", () => {
     const message = await receiveNote(MARKDOWN_BODY);
 
     expect(message.text).toBe(MARKDOWN_PLAIN_TEXT);
-    expect(message.formatted).toMatchObject({
-      children: [
-        {
-          type: "paragraph",
-          children: expect.arrayContaining([
-            expect.objectContaining({ type: "strong" }),
-          ]),
-        },
-      ],
-    });
+    expect(message.formatted.nodes).toEqual([
+      expect.arrayContaining(["p", ["strong", {}, "bold"]]),
+    ]);
     expect(toAstSpy).toHaveBeenCalledOnce();
   });
 

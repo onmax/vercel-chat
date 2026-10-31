@@ -19,10 +19,11 @@ type PostableMessageInput = AdapterPostableMessage;
 
 const LINE_BREAK_REGEX = /\r\n|\r|\n/;
 
-type Element<
-  TTag extends string,
-  TAttributes = ElementNodeAttributes,
-> = [TTag, TAttributes & ElementNodeAttributes, ...Node[]];
+type Element<TTag extends string, TAttributes = ElementNodeAttributes> = [
+  TTag,
+  TAttributes & ElementNodeAttributes,
+  ...Node[],
+];
 
 /** The parsed document. Its `nodes` are the top-level blocks. */
 export type Root = MarkdownDocument;
@@ -218,8 +219,11 @@ export const DEFAULT_MAX_INCOMING_PARSE_LENGTH = 16_384;
  * Default maximum nesting depth of an AST built by
  * `BaseFormatConverter.parseIncoming`. Recursive serializers such as
  * `JSON.stringify` overflow the stack on trees a few thousand levels deep.
+ * The parser stops at 100 levels of block nesting and drops the rest of the
+ * document, so a tree that reaches 100 levels may be cut short and is kept
+ * as text instead.
  */
-const DEFAULT_MAX_INCOMING_AST_DEPTH = 128;
+const DEFAULT_MAX_INCOMING_AST_DEPTH = 99;
 
 function exceedsDepth(ast: Root, max: number): boolean {
   const stack: [Content, number][] = ast.nodes.map((node) => [node, 1]);
@@ -402,7 +406,11 @@ export function inlineCode(value: string): InlineCode {
  */
 export function codeBlock(value: string, lang?: string): Code {
   return lang
-    ? ["pre", { language: lang }, ["code", { class: `language-${lang}` }, value]]
+    ? [
+        "pre",
+        { language: lang },
+        ["code", { class: `language-${lang}` }, value],
+      ]
     : ["pre", {}, ["code", {}, value]];
 }
 

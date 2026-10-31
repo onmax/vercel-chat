@@ -2,7 +2,7 @@ import { PermissionError, ValidationError } from "@chat-adapter/shared";
 import { createMockChatInstance, createMockState } from "@chat-adapter/tests";
 import { Client as GraphClient } from "@microsoft/teams.graph";
 import { chats, shares, teams } from "@microsoft/teams.graph-endpoints";
-import { ConsoleLogger } from "chat";
+import { ConsoleLogger, root } from "chat";
 import { describe, expect, it, vi } from "vitest";
 import type { TeamsApp } from "./app";
 import { TeamsGraphReader } from "./graph-api";
@@ -776,8 +776,7 @@ describe("channel reply pagination", () => {
 
 describe("inbound markdown budget", () => {
   const MARKDOWN = "**bold** with [a link](https://example.com)";
-  const EMPHASIS = "*a".repeat(8192);
-  const NESTED = ">".repeat(6000);
+  const LONG = "*a".repeat(8193);
   const serviceUrl = "https://smba.trafficmanager.net/teams/";
   const channelContext = {
     teamId: "team-id",
@@ -852,97 +851,45 @@ describe("inbound markdown budget", () => {
 
       expect(call).toHaveBeenCalledWith(endpoint, expect.anything());
       expect(message?.text).toBe(MARKDOWN);
-      expect(message?.formatted.children).toMatchObject([
-        {
-          type: "paragraph",
-          children: [
-            { type: "strong", children: [{ type: "text", value: "bold" }] },
-            { type: "text", value: " with " },
-            {
-              type: "link",
-              url: "https://example.com",
-              children: [{ type: "text", value: "a link" }],
-            },
-          ],
-        },
+      expect(message?.formatted.nodes).toMatchObject([
+        [
+          "p",
+          {},
+          ["strong", {}, "bold"],
+          " with ",
+          ["a", { href: "https://example.com" }, "a link"],
+        ],
       ]);
     });
 
-    it.each([
-      ["too many emphasis markers", EMPHASIS],
-      ["a line opening too many blockquotes", NESTED],
-    ])("keeps a message with %s verbatim", async (_case, value) => {
-      const { adapter, call } = await createAdapter(value);
+    it("keeps an over-length message verbatim", async () => {
+      const { adapter, call } = await createAdapter(LONG);
       const message = await load(adapter);
 
       expect(call).toHaveBeenCalledWith(endpoint, expect.anything());
-      expect(message?.text).toBe(value);
-      expect(message?.formatted).toEqual({
-        type: "root",
-        children: [{ type: "paragraph", children: [{ type: "text", value }] }],
-      });
-      expect(() => JSON.stringify(message?.formatted)).not.toThrow();
-    });
-
-    it("checks the budget after decoding entities", async () => {
-      const value = `&gt;${"- ".repeat(8000)}a`;
-      const decoded = `>${"- ".repeat(8000)}a`;
-      const toAst = vi.spyOn(TeamsFormatConverter.prototype, "toAst");
-      try {
-        const { adapter } = await createAdapter(value);
-        const message = await load(adapter);
-
-        expect(message?.text).toBe(value);
-        expect(message?.formatted).toEqual({
-          type: "root",
-          children: [
-            {
-              type: "paragraph",
-              children: [{ type: "text", value: decoded }],
-            },
-          ],
-        });
-        expect(toAst).not.toHaveBeenCalled();
-      } finally {
-        toAst.mockRestore();
-      }
+      expect(message?.text).toBe(LONG);
+      expect(message?.formatted).toEqual(root([["p", {}, LONG]]));
     });
 
     it("still parses an encoded blockquote under the budget", async () => {
       const { adapter } = await createAdapter("&gt; quoted");
       const message = await load(adapter);
 
-      expect(message?.formatted.children).toMatchObject([
-        {
-          type: "blockquote",
-          children: [
-            {
-              type: "paragraph",
-              children: [{ type: "text", value: "quoted" }],
-            },
-          ],
-        },
+      expect(message?.formatted.nodes).toMatchObject([
+        ["blockquote", {}, ["p", {}, "quoted"]],
       ]);
     });
 
     it("renders a skipped message as plain text", async () => {
-      const brackets = "[x]".repeat(513);
+      const brackets = "[x]".repeat(5500);
       const { adapter } = await createAdapter(
         `<at>Bot</at> Tom &amp; Jerry &lt;3 ${brackets}`
       );
       const message = await load(adapter);
 
-      expect(message?.formatted).toEqual({
-        type: "root",
-        children: [
-          {
-            type: "paragraph",
-            children: [
-              { type: "text", value: `@Bot Tom & Jerry <3 ${brackets}` },
-            ],
-          },
-        ],
-      });
+      expect(message?.formatted).toEqual(
+        root([["p", {}, `@Bot Tom & Jerry <3 ${brackets}`]])
+      );
     });
   });
 });

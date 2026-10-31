@@ -2,11 +2,11 @@
  * Core types for chat-sdk
  */
 
-import type { Root } from "./markdown";
 import type { CardElement } from "./cards";
 import type { SerializedChannel } from "./channel";
 import type { ChatElement } from "./jsx-runtime";
 import type { Logger, LogLevel } from "./logger";
+import type { Root } from "./markdown";
 import type { Message } from "./message";
 import type { ModalElement, SelectOptionElement } from "./modals";
 import type { PostableObject } from "./postable-object";

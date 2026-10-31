@@ -9,7 +9,7 @@ import {
 
 describe("Messenger cards", () => {
   describe("text fallback rendering", () => {
-    it("renders a simple card with title", () => {
+    it("renders a simple card with title", async () => {
       const card: CardElement = {
         type: "card",
         title: "Hello World",
@@ -19,7 +19,7 @@ describe("Messenger cards", () => {
       expect(result).toBe("Hello World");
     });
 
-    it("renders card with title and subtitle", () => {
+    it("renders card with title and subtitle", async () => {
       const card: CardElement = {
         type: "card",
         title: "Order #1234",
@@ -30,7 +30,7 @@ describe("Messenger cards", () => {
       expect(result).toBe("Order #1234\nStatus update");
     });
 
-    it("renders card with text content", () => {
+    it("renders card with text content", async () => {
       const card: CardElement = {
         type: "card",
         title: "Notification",
@@ -45,7 +45,7 @@ describe("Messenger cards", () => {
       expect(result).toBe("Notification\n\nYour order has been shipped!");
     });
 
-    it("renders card with fields", () => {
+    it("renders card with fields", async () => {
       const card: CardElement = {
         type: "card",
         title: "Order Details",
@@ -64,7 +64,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("Status: Shipped");
     });
 
-    it("renders card with link buttons as text with URLs", () => {
+    it("renders card with link buttons as text with URLs", async () => {
       const card: CardElement = {
         type: "card",
         title: "Actions",
@@ -91,7 +91,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("Get Help: https://example.com/help");
     });
 
-    it("renders card with action buttons as bracketed text", () => {
+    it("renders card with action buttons as bracketed text", async () => {
       const card: CardElement = {
         type: "card",
         title: "Approve?",
@@ -120,7 +120,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("[Reject]");
     });
 
-    it("renders card with inline image", () => {
+    it("renders card with inline image", async () => {
       const card: CardElement = {
         type: "card",
         title: "Image Card",
@@ -136,7 +136,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("Example image: https://example.com/image.png");
     });
 
-    it("renders image URL without alt text", () => {
+    it("renders image URL without alt text", async () => {
       const card: CardElement = {
         type: "card",
         children: [
@@ -150,7 +150,7 @@ describe("Messenger cards", () => {
       expect(result).toBe("https://example.com/photo.jpg");
     });
 
-    it("renders card with divider", () => {
+    it("renders card with divider", async () => {
       const card: CardElement = {
         type: "card",
         children: [
@@ -163,7 +163,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("---");
     });
 
-    it("renders card with section", () => {
+    it("renders card with section", async () => {
       const card: CardElement = {
         type: "card",
         children: [
@@ -177,7 +177,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("Section content");
     });
 
-    it("renders card with link element", () => {
+    it("renders card with link element", async () => {
       const card: CardElement = {
         type: "card",
         children: [
@@ -192,7 +192,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("Example Link: https://example.com");
     });
 
-    it("renders card with table", () => {
+    it("renders card with table", async () => {
       const card: CardElement = {
         type: "card",
         children: [
@@ -212,7 +212,7 @@ describe("Messenger cards", () => {
       expect(result).toContain("Bob | 25");
     });
 
-    it("renders card imageUrl", () => {
+    it("renders card imageUrl", async () => {
       const card: CardElement = {
         type: "card",
         title: "Card with Header Image",
@@ -226,7 +226,7 @@ describe("Messenger cards", () => {
 
   describe("template conversion", () => {
     describe("Generic Template", () => {
-      it("produces template for card with title and buttons", () => {
+      it("produces template for card with title and buttons", async () => {
         const card: CardElement = {
           type: "card",
           title: "Choose an action",
@@ -257,7 +257,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("produces template for card with imageUrl", () => {
+      it("produces template for card with imageUrl", async () => {
         const card: CardElement = {
           type: "card",
           title: "Product",
@@ -281,7 +281,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("includes subtitle in generic template", () => {
+      it("includes subtitle in generic template", async () => {
         const card: CardElement = {
           type: "card",
           title: "Order #123",
@@ -304,7 +304,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("supports link buttons as web_url type", () => {
+      it("supports link buttons as web_url type", async () => {
         const card: CardElement = {
           type: "card",
           title: "Resources",
@@ -334,7 +334,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("mixes postback and web_url buttons", () => {
+      it("mixes postback and web_url buttons", async () => {
         const card: CardElement = {
           type: "card",
           title: "Options",
@@ -365,7 +365,7 @@ describe("Messenger cards", () => {
     });
 
     describe("Button Template", () => {
-      it("produces template for card without title but with text and buttons", () => {
+      it("produces template for card without title but with text and buttons", async () => {
         const card: CardElement = {
           type: "card",
           children: [
@@ -390,7 +390,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("builds body text from fields element", () => {
+      it("builds body text from fields element", async () => {
         const card: CardElement = {
           type: "card",
           children: [
@@ -418,7 +418,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("builds body text from link element", () => {
+      it("builds body text from link element", async () => {
         const card: CardElement = {
           type: "card",
           children: [
@@ -445,7 +445,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("builds body text from section containing fields", () => {
+      it("builds body text from section containing fields", async () => {
         const card: CardElement = {
           type: "card",
           children: [
@@ -476,7 +476,7 @@ describe("Messenger cards", () => {
     });
 
     describe("constraint handling", () => {
-      it("falls back to text for table nested in section", () => {
+      it("falls back to text for table nested in section", async () => {
         const card: CardElement = {
           type: "card",
           title: "Nested Table",
@@ -501,7 +501,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("falls back to text when actions contain only select", () => {
+      it("falls back to text when actions contain only select", async () => {
         const card: CardElement = {
           type: "card",
           title: "Select Only",
@@ -526,7 +526,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("limits to 3 buttons max", () => {
+      it("limits to 3 buttons max", async () => {
         const card: CardElement = {
           type: "card",
           title: "Many buttons",
@@ -552,7 +552,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("truncates long button titles to 20 chars", () => {
+      it("truncates long button titles to 20 chars", async () => {
         const card: CardElement = {
           type: "card",
           title: "Long titles",
@@ -581,7 +581,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("falls back to text for cards without buttons", () => {
+      it("falls back to text for cards without buttons", async () => {
         const card: CardElement = {
           type: "card",
           title: "Info only",
@@ -591,7 +591,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("falls back to text for cards with only link buttons and no title", () => {
+      it("falls back to text for cards with only link buttons and no title", async () => {
         const card: CardElement = {
           type: "card",
           children: [
@@ -611,7 +611,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("falls back to text for cards with select elements", () => {
+      it("falls back to text for cards with select elements", async () => {
         const card: CardElement = {
           type: "card",
           title: "With select",
@@ -633,7 +633,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("falls back to text for cards with radio_select elements", () => {
+      it("falls back to text for cards with radio_select elements", async () => {
         const card: CardElement = {
           type: "card",
           title: "With radio",
@@ -655,7 +655,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("falls back to text for cards with table elements", () => {
+      it("falls back to text for cards with table elements", async () => {
         const card: CardElement = {
           type: "card",
           title: "With table",
@@ -675,7 +675,7 @@ describe("Messenger cards", () => {
         expect(result.type).toBe("text");
       });
 
-      it("truncates long subtitles to 80 chars", () => {
+      it("truncates long subtitles to 80 chars", async () => {
         const longSubtitle =
           "This is an extremely long subtitle that definitely exceeds the 80 character limit imposed by Messenger";
         const card: CardElement = {
@@ -700,7 +700,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("handles nested actions in sections", () => {
+      it("handles nested actions in sections", async () => {
         const card: CardElement = {
           type: "card",
           title: "Nested",
@@ -731,62 +731,62 @@ describe("Messenger cards", () => {
 
   describe("callback data", () => {
     describe("encoding", () => {
-      it("encodes actionId only", () => {
+      it("encodes actionId only", async () => {
         const result = encodeMessengerCallbackData("my_action");
         expect(result).toBe('chat:{"a":"my_action"}');
       });
 
-      it("encodes actionId and value", () => {
+      it("encodes actionId and value", async () => {
         const result = encodeMessengerCallbackData("my_action", "some_value");
         expect(result).toBe('chat:{"a":"my_action","v":"some_value"}');
       });
 
-      it("handles special characters in actionId", () => {
+      it("handles special characters in actionId", async () => {
         const result = encodeMessengerCallbackData("action:with:colons");
         expect(result).toBe('chat:{"a":"action:with:colons"}');
       });
     });
 
     describe("decoding", () => {
-      it("decodes encoded callback data with value", () => {
+      it("decodes encoded callback data with value", async () => {
         const encoded = encodeMessengerCallbackData("my_action", "some_value");
         const result = decodeMessengerCallbackData(encoded);
         expect(result.actionId).toBe("my_action");
         expect(result.value).toBe("some_value");
       });
 
-      it("decodes actionId without value", () => {
+      it("decodes actionId without value", async () => {
         const encoded = encodeMessengerCallbackData("my_action");
         const result = decodeMessengerCallbackData(encoded);
         expect(result.actionId).toBe("my_action");
         expect(result.value).toBeUndefined();
       });
 
-      it("handles non-prefixed data as passthrough (legacy support)", () => {
+      it("handles non-prefixed data as passthrough (legacy support)", async () => {
         const result = decodeMessengerCallbackData("raw_payload");
         expect(result.actionId).toBe("raw_payload");
         expect(result.value).toBe("raw_payload");
       });
 
-      it("handles undefined data", () => {
+      it("handles undefined data", async () => {
         const result = decodeMessengerCallbackData(undefined);
         expect(result.actionId).toBe("messenger_callback");
         expect(result.value).toBeUndefined();
       });
 
-      it("handles malformed JSON after prefix", () => {
+      it("handles malformed JSON after prefix", async () => {
         const result = decodeMessengerCallbackData("chat:not-valid-json");
         expect(result.actionId).toBe("chat:not-valid-json");
         expect(result.value).toBe("chat:not-valid-json");
       });
 
-      it("handles empty string as missing data", () => {
+      it("handles empty string as missing data", async () => {
         const result = decodeMessengerCallbackData("");
         expect(result.actionId).toBe("messenger_callback");
         expect(result.value).toBeUndefined();
       });
 
-      it("roundtrips encode/decode", () => {
+      it("roundtrips encode/decode", async () => {
         const actionId = "test_action";
         const value = "test_value";
         const encoded = encodeMessengerCallbackData(actionId, value);
@@ -797,7 +797,7 @@ describe("Messenger cards", () => {
     });
 
     describe("template integration", () => {
-      it("encodes button id and value in postback payload", () => {
+      it("encodes button id and value in postback payload", async () => {
         const card: CardElement = {
           type: "card",
           title: "Test",
@@ -828,7 +828,7 @@ describe("Messenger cards", () => {
         }
       });
 
-      it("encodes button id without value when value is undefined", () => {
+      it("encodes button id without value when value is undefined", async () => {
         const card: CardElement = {
           type: "card",
           title: "Test",

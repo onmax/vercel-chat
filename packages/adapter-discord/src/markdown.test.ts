@@ -1,38 +1,38 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DiscordFormatConverter } from "./markdown";
 
 describe("DiscordFormatConverter", () => {
   const converter = new DiscordFormatConverter();
 
   describe("fromAst (AST -> Discord markdown)", () => {
-    it("should convert bold", () => {
-      const ast = converter.toAst("**bold text**");
+    it("should convert bold", async () => {
+      const ast = await converter.toAst("**bold text**");
       const result = converter.fromAst(ast);
       expect(result).toContain("**bold text**");
     });
 
-    it("should convert italic", () => {
-      const ast = converter.toAst("*italic text*");
+    it("should convert italic", async () => {
+      const ast = await converter.toAst("*italic text*");
       const result = converter.fromAst(ast);
       expect(result).toContain("*italic text*");
     });
 
-    it("should convert strikethrough", () => {
-      const ast = converter.toAst("~~strikethrough~~");
+    it("should convert strikethrough", async () => {
+      const ast = await converter.toAst("~~strikethrough~~");
       const result = converter.fromAst(ast);
       expect(result).toContain("~~strikethrough~~");
     });
 
-    it("should convert links", () => {
-      const ast = converter.toAst("[link text](https://example.com)");
+    it("should convert links", async () => {
+      const ast = await converter.toAst("[link text](https://example.com)");
       const result = converter.fromAst(ast);
       expect(result).toContain("[link text](https://example.com)");
     });
 
-    it("should render a bare URL as a bare URL, not a masked link", () => {
+    it("should render a bare URL as a bare URL, not a masked link", async () => {
       // Discord renders masked links `[text](url)` only in embeds, so wrapping
       // a bare URL as `[url](url)` shows up as literal text in a normal message.
-      const ast = converter.toAst("https://example.com");
+      const ast = await converter.toAst("https://example.com");
       const result = converter.fromAst(ast);
       expect(result).toContain("https://example.com");
       expect(result).not.toContain(
@@ -40,117 +40,119 @@ describe("DiscordFormatConverter", () => {
       );
     });
 
-    it("should preserve angle brackets on an autolink to suppress its embed", () => {
-      const ast = converter.toAst("<https://example.com>");
+    it("should preserve angle brackets on an autolink to suppress its embed", async () => {
+      const ast = await converter.toAst("<https://example.com>");
       const result = converter.fromAst(ast);
       expect(result).toBe("<https://example.com>");
     });
 
-    it("should preserve angle brackets in a masked link destination", () => {
-      const ast = converter.toAst("[link text](<https://example.com>)");
+    it("should preserve angle brackets in a masked link destination", async () => {
+      const ast = await converter.toAst("[link text](<https://example.com>)");
       const result = converter.fromAst(ast);
       expect(result).toBe("[link text](<https://example.com>)");
     });
 
-    it("should preserve a masked link whose label matches its URL", () => {
+    it("should preserve a masked link whose label matches its URL", async () => {
       const input = "[https://example.com](<https://example.com>)";
-      expect(converter.fromAst(converter.toAst(input))).toBe(input);
+      expect(converter.fromAst(await converter.toAst(input))).toBe(input);
     });
 
-    it("should preserve inline code", () => {
-      const ast = converter.toAst("Use `const x = 1`");
+    it("should preserve inline code", async () => {
+      const ast = await converter.toAst("Use `const x = 1`");
       const result = converter.fromAst(ast);
       expect(result).toContain("`const x = 1`");
     });
 
-    it("should handle code blocks", () => {
+    it("should handle code blocks", async () => {
       const input = "```js\nconst x = 1;\n```";
-      const ast = converter.toAst(input);
+      const ast = await converter.toAst(input);
       const output = converter.fromAst(ast);
       expect(output).toContain("```");
       expect(output).toContain("const x = 1;");
     });
 
-    it("should handle mixed formatting", () => {
+    it("should handle mixed formatting", async () => {
       const input = "**Bold** and *italic* and [link](https://x.com)";
-      const ast = converter.toAst(input);
+      const ast = await converter.toAst(input);
       const output = converter.fromAst(ast);
       expect(output).toContain("**Bold**");
       expect(output).toContain("*italic*");
       expect(output).toContain("[link](https://x.com)");
     });
 
-    it("should convert @mentions to Discord format", () => {
-      const ast = converter.toAst("Hello @someone");
+    it("should convert @mentions to Discord format", async () => {
+      const ast = await converter.toAst("Hello @someone");
       const result = converter.fromAst(ast);
       expect(result).toContain("<@someone>");
     });
 
-    it("should not turn email addresses into mentions", () => {
-      const ast = converter.toAst("Contact me at user@example.com");
+    it("should not turn email addresses into mentions", async () => {
+      const ast = await converter.toAst("Contact me at user@example.com");
       const result = converter.fromAst(ast);
       expect(result).toContain("user@example.com");
       expect(result).not.toContain("<@example>");
     });
 
-    it("should still convert a bare mention that follows a period", () => {
-      const ast = converter.toAst("read the docs.@everyone please");
+    it("should still convert a bare mention that follows a period", async () => {
+      const ast = await converter.toAst("read the docs.@everyone please");
       const result = converter.fromAst(ast);
       expect(result).toContain("<@everyone>");
     });
 
-    it("should not mangle an @handle inside a url", () => {
-      const result = converter.renderPostable({
+    it("should not mangle an @handle inside a url", async () => {
+      const result = await converter.renderPostable({
         markdown: "see https://github.com/@vercel here",
       });
       expect(result).toContain("https://github.com/@vercel");
       expect(result).not.toContain("<@vercel>");
     });
 
-    it("should not mangle a mention inside an inline code span", () => {
-      const result = converter.renderPostable({ markdown: "run `ping @here`" });
+    it("should not mangle a mention inside an inline code span", async () => {
+      const result = await converter.renderPostable({
+        markdown: "run `ping @here`",
+      });
       expect(result).toContain("`ping @here`");
       expect(result).not.toContain("<@here>");
     });
   });
 
   describe("renderPostable (mentions)", () => {
-    it("should preserve a preview-suppressed link in markdown", () => {
+    it("should preserve a preview-suppressed link in markdown", async () => {
       expect(
-        converter.renderPostable({ markdown: "<https://example.com>" })
+        await converter.renderPostable({ markdown: "<https://example.com>" })
       ).toBe("<https://example.com>");
     });
 
-    it("should preserve a preview-suppressed masked link in markdown", () => {
+    it("should preserve a preview-suppressed masked link in markdown", async () => {
       expect(
-        converter.renderPostable({
+        await converter.renderPostable({
           markdown: "[link text](<https://example.com>)",
         })
       ).toBe("[link text](<https://example.com>)");
     });
 
-    it("should convert a bare mention in raw text", () => {
-      expect(converter.renderPostable({ raw: "hey @alice" })).toContain(
+    it("should convert a bare mention in raw text", async () => {
+      expect(await converter.renderPostable({ raw: "hey @alice" })).toContain(
         "<@alice>"
       );
     });
 
-    it("should not double-wrap an already-formatted mention in raw text", () => {
-      const result = converter.renderPostable({ raw: "ping <@123> now" });
+    it("should not double-wrap an already-formatted mention in raw text", async () => {
+      const result = await converter.renderPostable({ raw: "ping <@123> now" });
       expect(result).toContain("<@123>");
       expect(result).not.toContain("<<@123>>");
     });
 
-    it("should leave email addresses in raw text untouched", () => {
-      const result = converter.renderPostable({
+    it("should leave email addresses in raw text untouched", async () => {
+      const result = await converter.renderPostable({
         raw: "email support@vercel.com",
       });
       expect(result).toContain("support@vercel.com");
       expect(result).not.toContain("<@vercel>");
     });
 
-    it("should not mangle an @handle inside a url in raw text", () => {
-      const result = converter.renderPostable({
+    it("should not mangle an @handle inside a url in raw text", async () => {
+      const result = await converter.renderPostable({
         raw: "see twitter.com/@jack",
       });
       expect(result).toContain("twitter.com/@jack");
@@ -159,80 +161,81 @@ describe("DiscordFormatConverter", () => {
   });
 
   describe("toAst (Discord markdown -> AST)", () => {
-    it("should convert bold", () => {
-      const ast = converter.toAst("Hello **world**!");
-      expect(ast).toBeDefined();
-      expect(ast.type).toBe("root");
+    it("should convert bold", async () => {
+      const ast = await converter.toAst("Hello **world**!");
+      expect(ast.nodes).toHaveLength(1);
     });
 
-    it("should convert user mentions", () => {
-      const text = converter.extractPlainText("Hello <@123456789>");
+    it("should convert user mentions", async () => {
+      const text = await converter.extractPlainText("Hello <@123456789>");
       expect(text).toBe("Hello @123456789");
     });
 
-    it("should convert user mentions with nickname marker", () => {
-      const text = converter.extractPlainText("Hello <@!123456789>");
+    it("should convert user mentions with nickname marker", async () => {
+      const text = await converter.extractPlainText("Hello <@!123456789>");
       expect(text).toBe("Hello @123456789");
     });
 
-    it("should convert channel mentions", () => {
-      const text = converter.extractPlainText("Check <#987654321>");
+    it("should convert channel mentions", async () => {
+      const text = await converter.extractPlainText("Check <#987654321>");
       expect(text).toBe("Check #987654321");
     });
 
-    it("should convert role mentions", () => {
-      const text = converter.extractPlainText("Hey <@&111222333>");
+    it("should convert role mentions", async () => {
+      const text = await converter.extractPlainText("Hey <@&111222333>");
       expect(text).toBe("Hey @&111222333");
     });
 
-    it("should convert custom emoji", () => {
-      const text = converter.extractPlainText("Nice <:thumbsup:123>");
+    it("should convert custom emoji", async () => {
+      const text = await converter.extractPlainText("Nice <:thumbsup:123>");
       expect(text).toBe("Nice :thumbsup:");
     });
 
-    it("should convert animated custom emoji", () => {
-      const text = converter.extractPlainText("Cool <a:wave:456>");
+    it("should convert animated custom emoji", async () => {
+      const text = await converter.extractPlainText("Cool <a:wave:456>");
       expect(text).toBe("Cool :wave:");
     });
 
-    it("should handle spoiler tags", () => {
-      const text = converter.extractPlainText("Secret ||hidden text||");
+    it("should handle spoiler tags", async () => {
+      const text = await converter.extractPlainText("Secret ||hidden text||");
       expect(text).toContain("hidden text");
     });
   });
 
   describe("extractPlainText", () => {
-    it("should remove bold markers", () => {
-      expect(converter.extractPlainText("Hello **world**!")).toBe(
+    it("should remove bold markers", async () => {
+      expect(await converter.extractPlainText("Hello **world**!")).toBe(
         "Hello world!"
       );
     });
 
-    it("should remove italic markers", () => {
-      expect(converter.extractPlainText("Hello *world*!")).toBe("Hello world!");
-    });
-
-    it("should remove strikethrough markers", () => {
-      expect(converter.extractPlainText("Hello ~~world~~!")).toBe(
+    it("should remove italic markers", async () => {
+      expect(await converter.extractPlainText("Hello *world*!")).toBe(
         "Hello world!"
       );
     });
 
-    it("should extract link text", () => {
+    it("should remove strikethrough markers", async () => {
+      expect(await converter.extractPlainText("Hello ~~world~~!")).toBe(
+        "Hello world!"
+      );
+    });
+
+    it("should extract link text", async () => {
       expect(
-        converter.extractPlainText("Check [this](https://example.com)")
+        await converter.extractPlainText("Check [this](https://example.com)")
       ).toBe("Check this");
     });
 
-    it("should format user mentions", () => {
-      const result = converter.extractPlainText("Hey <@U123>!");
+    it("should format user mentions", async () => {
+      const result = await converter.extractPlainText("Hey <@U123>!");
       expect(result).toContain("@U123");
     });
 
-    it("should handle complex messages", () => {
+    it("should handle complex messages", async () => {
       const input =
         "**Bold** and *italic* with [link](https://x.com) and <@U123>";
-      const result = converter.extractPlainText(input);
+      const result = await converter.extractPlainText(input);
       expect(result).toContain("Bold");
       expect(result).toContain("italic");
       expect(result).toContain("link");
@@ -242,74 +245,78 @@ describe("DiscordFormatConverter", () => {
       expect(result).not.toContain("<@");
     });
 
-    it("should handle inline code", () => {
-      const result = converter.extractPlainText("Use `const x = 1`");
+    it("should handle inline code", async () => {
+      const result = await converter.extractPlainText("Use `const x = 1`");
       expect(result).toContain("const x = 1");
     });
 
-    it("should handle code blocks", () => {
-      const result = converter.extractPlainText("```js\nconst x = 1;\n```");
+    it("should handle code blocks", async () => {
+      const result = await converter.extractPlainText(
+        "```js\nconst x = 1;\n```"
+      );
       expect(result).toContain("const x = 1;");
     });
 
-    it("should handle empty string", () => {
-      expect(converter.extractPlainText("")).toBe("");
+    it("should handle empty string", async () => {
+      expect(await converter.extractPlainText("")).toBe("");
     });
 
-    it("should handle plain text", () => {
-      expect(converter.extractPlainText("Hello world")).toBe("Hello world");
+    it("should handle plain text", async () => {
+      expect(await converter.extractPlainText("Hello world")).toBe(
+        "Hello world"
+      );
     });
   });
 
   describe("renderPostable", () => {
-    it("should render a plain string with mention conversion", () => {
-      const result = converter.renderPostable("Hello @user");
+    it("should render a plain string with mention conversion", async () => {
+      const result = await converter.renderPostable("Hello @user");
       expect(result).toBe("Hello <@user>");
     });
 
-    it("should render a raw message with mention conversion", () => {
-      const result = converter.renderPostable({ raw: "Hello @user" });
+    it("should render a raw message with mention conversion", async () => {
+      const result = await converter.renderPostable({ raw: "Hello @user" });
       expect(result).toBe("Hello <@user>");
     });
 
-    it("should render a markdown message", () => {
-      const result = converter.renderPostable({
+    it("should render a markdown message", async () => {
+      const result = await converter.renderPostable({
         markdown: "Hello **world** @user",
       });
       expect(result).toContain("**world**");
       expect(result).toContain("<@user>");
     });
 
-    it("should handle empty message", () => {
-      const result = converter.renderPostable("");
+    it("should handle empty message", async () => {
+      const result = await converter.renderPostable("");
       expect(result).toBe("");
     });
 
-    it("should render AST message", () => {
-      const ast = converter.toAst("Hello **world**");
-      const result = converter.renderPostable({ ast });
+    it("should render AST message", async () => {
+      const ast = await converter.toAst("Hello **world**");
+      const result = await converter.renderPostable({ ast });
       expect(result).toContain("**world**");
     });
   });
 
   describe("blockquotes", () => {
-    it("should handle blockquotes", () => {
-      const ast = converter.toAst("> quoted text");
+    it("should handle blockquotes", async () => {
+      const ast = await converter.toAst("> quoted text");
       const result = converter.fromAst(ast);
       expect(result).toContain("> quoted text");
     });
   });
 
   describe("lists", () => {
-    it("should handle unordered lists", () => {
-      const ast = converter.toAst("- item 1\n- item 2");
+    it("should handle unordered lists", async () => {
+      const ast = await converter.toAst("- item 1\n- item 2");
       const result = converter.fromAst(ast);
       expect(result).toContain("- item 1");
       expect(result).toContain("- item 2");
     });
 
-    it("should handle ordered lists", () => {
-      const ast = converter.toAst("1. item 1\n2. item 2");
+    it("should handle ordered lists", async () => {
+      const ast = await converter.toAst("1. item 1\n2. item 2");
       const result = converter.fromAst(ast);
       expect(result).toContain("1.");
       expect(result).toContain("2.");
@@ -317,15 +324,15 @@ describe("DiscordFormatConverter", () => {
   });
 
   describe("nested lists", () => {
-    it("should indent nested unordered lists", () => {
-      const result = converter.fromMarkdown(
+    it("should indent nested unordered lists", async () => {
+      const result = await converter.fromMarkdown(
         "- parent\n  - child 1\n  - child 2"
       );
       expect(result).toBe("- parent\n  - child 1\n  - child 2");
     });
 
-    it("should indent nested ordered lists", () => {
-      const result = converter.fromMarkdown(
+    it("should indent nested ordered lists", async () => {
+      const result = await converter.fromMarkdown(
         "1. first\n   1. sub-first\n   2. sub-second\n2. second"
       );
       expect(result).toContain("1. first");
@@ -334,8 +341,8 @@ describe("DiscordFormatConverter", () => {
       expect(result).toContain("2. second");
     });
 
-    it("should handle deeply nested lists", () => {
-      const result = converter.fromMarkdown(
+    it("should handle deeply nested lists", async () => {
+      const result = await converter.fromMarkdown(
         "- level 1\n  - level 2\n    - level 3"
       );
       expect(result).toContain("- level 1");
@@ -343,13 +350,15 @@ describe("DiscordFormatConverter", () => {
       expect(result).toContain("    - level 3");
     });
 
-    it("should keep sibling items at the same indent level", () => {
-      const result = converter.fromMarkdown("- item 1\n- item 2\n- item 3");
+    it("should keep sibling items at the same indent level", async () => {
+      const result = await converter.fromMarkdown(
+        "- item 1\n- item 2\n- item 3"
+      );
       expect(result).toBe("- item 1\n- item 2\n- item 3");
     });
 
-    it("should handle mixed ordered and unordered nesting", () => {
-      const result = converter.fromMarkdown(
+    it("should handle mixed ordered and unordered nesting", async () => {
+      const result = await converter.fromMarkdown(
         "1. first\n   - sub a\n   - sub b\n2. second"
       );
       expect(result).toContain("1. first");
@@ -360,16 +369,16 @@ describe("DiscordFormatConverter", () => {
   });
 
   describe("thematic break", () => {
-    it("should handle thematic break", () => {
-      const ast = converter.toAst("text\n\n---\n\nmore text");
+    it("should handle thematic break", async () => {
+      const ast = await converter.toAst("text\n\n---\n\nmore text");
       const result = converter.fromAst(ast);
       expect(result).toContain("---");
     });
   });
 
   describe("table rendering", () => {
-    it("should render markdown tables as code blocks", () => {
-      const result = converter.fromMarkdown(
+    it("should render markdown tables as code blocks", async () => {
+      const result = await converter.fromMarkdown(
         "| Name | Age |\n|------|-----|\n| Alice | 30 |"
       );
       expect(result).toContain("```");
@@ -379,31 +388,13 @@ describe("DiscordFormatConverter", () => {
   });
 });
 
-describe("parseIncoming budget", () => {
+describe("parseIncoming", () => {
   const converter = new DiscordFormatConverter();
-  const unparsed = (value: string) => ({
-    text: value,
-    formatted: {
-      type: "root",
-      children: [{ type: "paragraph", children: [{ type: "text", value }] }],
-    },
-  });
 
-  it("counts the brackets that spoilers convert to", () => {
+  it("parses spoilers", async () => {
     const input = "||a|| ".repeat(129).trim();
-    const toAst = vi.spyOn(converter, "toAst");
-    try {
-      expect(converter.parseIncoming(input)).toEqual(unparsed(input));
-      expect(toAst).not.toHaveBeenCalled();
-    } finally {
-      toAst.mockRestore();
-    }
-  });
-
-  it("parses spoilers within the budget", () => {
-    const input = "||a|| ".repeat(128).trim();
-    const result = converter.parseIncoming(input);
-    expect(result.formatted).toEqual(converter.toAst(input));
-    expect(result.text).toBe("[spoiler: a] ".repeat(128).trim());
+    const result = await converter.parseIncoming(input);
+    expect(result.formatted).toEqual(await converter.toAst(input));
+    expect(result.text).toBe("[spoiler: a] ".repeat(129).trim());
   });
 });

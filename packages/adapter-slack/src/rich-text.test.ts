@@ -1,10 +1,21 @@
-import { stringifyMarkdown, toPlainText } from "chat";
+import {
+  type Content,
+  getNodeTag,
+  getNodeValue,
+  stringifyMarkdown,
+  toPlainText,
+} from "chat";
 import { describe, expect, it } from "vitest";
 import type { SlackEvent, SlackMessageBlock } from "./event";
 import { SlackFormatConverter } from "./markdown";
 import { richTextBody } from "./rich-text";
 
 const converter = new SlackFormatConverter();
+
+/** A one-item unordered list holding `children`. */
+const listOf = (...children: Content[]): Content[] => [
+  ["ul", {}, ["li", {}, ...children]],
+];
 
 type Style = SlackMessageBlock["style"];
 
@@ -41,17 +52,22 @@ const event = (
 });
 
 /** The body as mrkdwn, and as markdown after the adapter's format converter. */
-function render(value: SlackEvent): { markdown: string; mrkdwn: string } {
+async function render(
+  value: SlackEvent
+): Promise<{ markdown: string; mrkdwn: string }> {
   const mrkdwn = richTextBody(value);
   if (mrkdwn === undefined) {
     throw new Error("expected a rich text body");
   }
-  return { mrkdwn, markdown: stringifyMarkdown(converter.toAst(mrkdwn)) };
+  return {
+    mrkdwn,
+    markdown: await stringifyMarkdown(await converter.toAst(mrkdwn)),
+  };
 }
 
 /** Render one list item made of `elements`. */
-function item(...elements: SlackMessageBlock[]) {
-  return render(event([list([section(...elements)])]));
+async function item(...elements: SlackMessageBlock[]) {
+  return await render(event([list([section(...elements)])]));
 }
 
 describe("richTextBody", () => {
@@ -118,8 +134,8 @@ describe("richTextBody", () => {
   });
 
   describe("lists", () => {
-    it("nests a list under the content column of its parent item", () => {
-      const { mrkdwn, markdown } = render(
+    it("nests a list under the content column of its parent item", async () => {
+      const { mrkdwn, markdown } = await render(
         event([
           list([section(text("one"))], { style: "ordered", offset: 9 }),
           list([section(text("nested"))], { indent: 1 }),
@@ -128,40 +144,43 @@ describe("richTextBody", () => {
       );
       // "10. " is four columns wide, so the child starts at column 4.
       expect(mrkdwn).toBe("10. one\n    - nested\n      - deeper");
-      expect(markdown).toBe("10. one\n    * nested\n      * deeper\n");
+      // Comark indents the child by three columns, which moves it out of
+      // the item when read back.
+      expect(markdown).toBe("10. one\n   - nested\n     - deeper");
     });
 
-    it("continues an ordered list after a nested list", () => {
-      const { markdown } = render(
+    it("continues an ordered list after a nested list", async () => {
+      const { markdown } = await render(
         event([
           list([section(text("first"))], { style: "ordered" }),
           list([section(text("child"))], { indent: 1 }),
           list([section(text("second"))], { style: "ordered", offset: 1 }),
         ])
       );
-      expect(markdown).toBe("1. first\n   * child\n2. second\n");
+      expect(markdown).toBe("1. first\n   - child\n2. second");
     });
 
-    it("clamps an indent deeper than any open parent", () => {
+    it("clamps an indent deeper than any open parent", async () => {
       expect(
-        render(event([list([section(text("a"))], { indent: 3 })])).mrkdwn
+        await (await render(event([list([section(text("a"))], { indent: 3 })])))
+          .mrkdwn
       ).toBe("- a");
     });
 
-    it("indents the continuation lines of a multi-line item", () => {
-      const { markdown } = item(text("line one\nline two"));
-      expect(markdown).toBe("* line one\n  line two\n");
+    it("indents the continuation lines of a multi-line item", async () => {
+      const { markdown } = await item(text("line one\nline two"));
+      expect(markdown).toBe("- line one\nline two");
     });
 
-    it("separates lists from surrounding text with a blank line", () => {
-      const { markdown } = render(
+    it("separates lists from surrounding text with a blank line", async () => {
+      const { markdown } = await render(
         event([
           section(text("Steps:\n")),
           list([section(text("one"))]),
           section(text("after")),
         ])
       );
-      expect(markdown).toBe("Steps:\n\n* one\n\nafter\n");
+      expect(markdown).toBe("Steps:\n\n- one\n\nafter");
     });
   });
 
@@ -185,24 +204,10 @@ describe("richTextBody", () => {
       "~~~",
       "*literal* _literal_ ~literal~ `literal`",
       "\\*literal*",
-    ])("keeps %j literal on first and continuation lines", (literal) => {
+    ])("keeps %j literal on first and continuation lines", async (literal) => {
       for (const value of [literal, `before\n${literal}`]) {
-        const root = converter.toAst(item(text(value)).mrkdwn);
-        expect(root.children).toMatchObject([
-          {
-            type: "list",
-            ordered: false,
-            children: [
-              {
-                type: "listItem",
-                checked: null,
-                children: [
-                  { type: "paragraph", children: [{ type: "text", value }] },
-                ],
-              },
-            ],
-          },
-        ]);
+        const root = await converter.toAst((await item(text(value))).mrkdwn);
+        expect(root.nodes).toEqual(listOf(["p", {}, value]));
         expect(toPlainText(root)).toBe(value);
       }
     });
@@ -210,219 +215,123 @@ describe("richTextBody", () => {
     it.each([
       "    # heading",
       "\t# heading",
-    ])("keeps leading whitespace literal in %j", (literal) => {
+    ])("keeps leading whitespace literal in %j", async (literal) => {
       for (const value of [literal, `before\n${literal}`]) {
-        const root = converter.toAst(item(text(value)).mrkdwn);
-        expect(root.children).toMatchObject([
-          {
-            type: "list",
-            children: [
-              {
-                type: "listItem",
-                children: [
-                  { type: "paragraph", children: [{ type: "text", value }] },
-                ],
-              },
-            ],
-          },
-        ]);
+        const root = await converter.toAst((await item(text(value))).mrkdwn);
+        expect(root.nodes).toEqual(listOf(["p", {}, value]));
         expect(toPlainText(root)).toBe(value);
       }
     });
 
-    it("preserves indentation in text surrounding a list", () => {
-      const root = converter.toAst(
-        render(
-          event([section(text("    # heading")), list([section(text("item"))])])
+    it("preserves indentation in text surrounding a list", async () => {
+      const root = await converter.toAst(
+        await (
+          await render(
+            event([
+              section(text("    # heading")),
+              list([section(text("item"))]),
+            ])
+          )
         ).mrkdwn
       );
-      expect(root.children).toMatchObject([
-        {
-          type: "paragraph",
-          children: [{ type: "text", value: "    # heading" }],
-        },
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: "item" }],
-                },
-              ],
-            },
-          ],
-        },
+      expect(root.nodes).toEqual([
+        ["p", {}, "    # heading"],
+        ...listOf(["p", {}, "item"]),
       ]);
       expect(toPlainText(root)).toBe("    # heading\n\nitem");
     });
 
-    it("does not turn an indented continuation paragraph into code", () => {
-      const root = converter.toAst(
-        item(text("before\n\n    # heading")).mrkdwn
+    it("does not turn an indented continuation paragraph into code", async () => {
+      const root = await converter.toAst(
+        (await item(text("before\n\n    # heading"))).mrkdwn
       );
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: "before" }],
-                },
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: "    # heading" }],
-                },
-              ],
-            },
-          ],
-        },
-      ]);
+      expect(root.nodes).toEqual(
+        listOf(["p", {}, "before"], ["p", {}, "    # heading"])
+      );
       expect(toPlainText(root)).toBe("before\n    # heading");
     });
 
-    it("protects syntax assembled from separate text elements", () => {
-      const root = converter.toAst(
-        item(text("-"), text("-"), text("-")).mrkdwn
+    it("protects syntax assembled from separate text elements", async () => {
+      const root = await converter.toAst(
+        (await item(text("-"), text("-"), text("-"))).mrkdwn
       );
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: "---" }],
-                },
-              ],
-            },
-          ],
-        },
-      ]);
+      expect(root.nodes).toEqual(listOf(["p", {}, "---"]));
     });
 
-    it("preserves real formatting around literal syntax", () => {
+    it("preserves real formatting around literal syntax", async () => {
       const literal = "# *literal* [x] &lt;";
-      const root = converter.toAst(item(text(literal, { bold: true })).mrkdwn);
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [
-                    {
-                      type: "strong",
-                      children: [{ type: "text", value: literal }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ]);
+      const root = await converter.toAst(
+        (await item(text(literal, { bold: true }))).mrkdwn
+      );
+      expect(root.nodes).toEqual(listOf(["p", {}, ["strong", {}, literal]]));
       expect(toPlainText(root)).toBe(literal);
     });
 
     it.each([
       "*abc*",
       "<b>",
-    ])("keeps %j literal when conflicting marks drop inline code", (literal) => {
-      const root = converter.toAst(
-        item(
-          text(literal, { bold: true, code: true }),
-          text("x", { italic: true })
+    ])("keeps %j literal when conflicting marks drop inline code", async (literal) => {
+      const root = await converter.toAst(
+        (
+          await item(
+            text(literal, { bold: true, code: true }),
+            text("x", { italic: true })
+          )
         ).mrkdwn
       );
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: `${literal}x` }],
-                },
-              ],
-            },
-          ],
-        },
-      ]);
+      expect(root.nodes).toEqual(listOf(["p", {}, `${literal}x`]));
       expect(toPlainText(root)).toBe(`${literal}x`);
     });
 
-    it("does not entity-encode punctuation inside inline code", () => {
+    it("does not entity-encode punctuation inside inline code", async () => {
       const literal = "--- [x] # > &lt; *literal*";
-      const root = converter.toAst(item(text(literal, { code: true })).mrkdwn);
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "inlineCode", value: literal }],
-                },
-              ],
-            },
-          ],
-        },
-      ]);
+      const root = await converter.toAst(
+        (await item(text(literal, { code: true }))).mrkdwn
+      );
+      expect(root.nodes).toEqual(listOf(["p", {}, ["code", {}, literal]]));
       expect(toPlainText(root)).toBe(literal);
     });
   });
 
   describe("inline styles", () => {
-    it("nests a style that starts inside another at a space", () => {
-      const { mrkdwn, markdown } = item(
+    it("nests a style that starts inside another at a space", async () => {
+      const { mrkdwn, markdown } = await item(
         text("make ", { bold: true }),
         text("this", { bold: true, italic: true }),
         text(" work", { bold: true })
       );
       expect(mrkdwn).toBe("- *make _this_ work*");
-      expect(markdown).toBe("* **make *this* work**\n");
+      expect(markdown).toBe("- **make *this* work**");
     });
 
-    it("keeps the shared style when another changes mid-word", () => {
-      const { mrkdwn, markdown } = item(
+    it("keeps the shared style when another changes mid-word", async () => {
+      const { mrkdwn, markdown } = await item(
         text("foo", { bold: true }),
         text("bar", { bold: true, italic: true })
       );
       expect(mrkdwn).toBe("- *foobar*");
-      expect(markdown).toBe("* **foobar**\n");
+      expect(markdown).toBe("- **foobar**");
     });
 
-    it("drops a style that mrkdwn cannot open mid-word but keeps the text", () => {
-      const { markdown } = item(
+    it("drops a style that mrkdwn cannot open mid-word but keeps the text", async () => {
+      const { markdown } = await item(
         text("un"),
         text("bold", { bold: true }),
         text("ed")
       );
-      expect(markdown).toBe("* unbolded\n");
+      expect(markdown).toBe("- unbolded");
     });
 
-    it("closes a style before punctuation", () => {
-      const { markdown } = item(text("Note", { bold: true }), text(": read"));
-      expect(markdown).toBe("* **Note**: read\n");
+    it("closes a style before punctuation", async () => {
+      const { markdown } = await item(
+        text("Note", { bold: true }),
+        text(": read")
+      );
+      expect(markdown).toBe("- **Note**: read");
     });
 
-    it("keeps whitespace outside markers", () => {
-      const { mrkdwn } = item(
+    it("keeps whitespace outside markers", async () => {
+      const { mrkdwn } = await item(
         text("a "),
         text(" spaced ", { italic: true }),
         text("b")
@@ -430,77 +339,62 @@ describe("richTextBody", () => {
       expect(mrkdwn).toBe("- a  _spaced_ b");
     });
 
-    it("closes and reopens markers around a line break", () => {
-      const { markdown } = render(
+    it("closes and reopens markers around a line break", async () => {
+      const { markdown } = await render(
         event([
           section(text("x")),
           list([section(text("a\nb", { bold: true }))]),
         ])
       );
-      expect(markdown).toBe("x\n\n* **a**\n  **b**\n");
+      expect(markdown).toBe("x\n\n- **a**\n**b**");
     });
 
-    it("renders strike and code, with code innermost", () => {
-      const { mrkdwn, markdown } = item(
+    it("renders strike and code, with code innermost", async () => {
+      const { mrkdwn, markdown } = await item(
         text("old", { strike: true }),
         text(" "),
         text("run", { bold: true, code: true })
       );
       expect(mrkdwn).toBe("- ~old~ *`run`*");
-      expect(markdown).toBe("* ~~old~~ **`run`**\n");
+      expect(markdown).toBe("- ~~old~~ **`run`**");
     });
 
-    it("preserves literal control characters and entity spellings", () => {
+    it("preserves literal control characters and entity spellings", async () => {
       const literal = "a <b> & c &lt; &#35;";
-      const root = converter.toAst(item(text(literal)).mrkdwn);
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: literal }],
-                },
-              ],
-            },
-          ],
-        },
-      ]);
+      const root = await converter.toAst((await item(text(literal))).mrkdwn);
+      expect(root.nodes).toEqual(listOf(["p", {}, literal]));
       expect(toPlainText(root)).toBe(literal);
     });
   });
 
   describe("mentions and links", () => {
-    it("keeps special mentions literal inside inline code", () => {
-      const { mrkdwn, markdown } = item(
+    it("keeps special mentions literal inside inline code", async () => {
+      const { mrkdwn, markdown } = await item(
         { type: "broadcast", range: "here", style: { code: true } },
         text(" and "),
         { type: "broadcast", range: "channel" }
       );
       expect(mrkdwn).toBe("- `<!here>` and <!channel>");
-      expect(markdown).toBe("* `<!here>` and @channel\n");
+      expect(markdown).toBe("- `<!here>` and @channel");
     });
 
-    it("applies styles to links", () => {
-      const { markdown } = item(text("see "), {
+    it("applies styles to links", async () => {
+      const { markdown } = await item(text("see "), {
         type: "link",
         url: "https://example.com",
         text: "docs",
         style: { bold: true },
       });
-      expect(markdown).toBe("* see **[docs](https://example.com)**\n");
+      expect(markdown).toBe("- see **[docs](https://example.com)**");
     });
 
-    it("escapes a link label so a > cannot end the token", () => {
-      const { markdown } = item({
+    it("escapes a link label so a > cannot end the token", async () => {
+      const { markdown } = await item({
         type: "link",
         url: "https://example.com",
         text: "a|b > c",
       });
-      expect(markdown).toBe("* [a|b > c](https://example.com)\n");
+      expect(markdown).toBe("- [a|b > c](https://example.com)");
     });
 
     it("copies user group and channel labels from event.text", () => {
@@ -527,7 +421,7 @@ describe("richTextBody", () => {
   });
 
   describe("rich text block boundaries", () => {
-    it("keeps following text out of preceding lists and quotes", () => {
+    it("keeps following text out of preceding lists and quotes", async () => {
       const value = event([], {
         blocks: [
           { type: "rich_text", elements: [list([section(text("item"))])] },
@@ -538,53 +432,32 @@ describe("richTextBody", () => {
           { type: "rich_text", elements: [section(text("after"))] },
         ],
       });
-      const root = converter.toAst(render(value).mrkdwn);
-      expect(root.children).toMatchObject([
-        {
-          type: "list",
-          children: [
-            {
-              type: "listItem",
-              children: [
-                {
-                  type: "paragraph",
-                  children: [{ type: "text", value: "item" }],
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: "blockquote",
-          children: [
-            {
-              type: "paragraph",
-              children: [{ type: "text", value: "quoted" }],
-            },
-          ],
-        },
-        { type: "paragraph", children: [{ type: "text", value: "after" }] },
+      const root = await converter.toAst((await render(value)).mrkdwn);
+      expect(root.nodes).toEqual([
+        ...listOf(["p", {}, "item"]),
+        ["blockquote", {}, ["p", {}, "quoted"]],
+        ["p", {}, "after"],
       ]);
       expect(toPlainText(root)).toBe("item\n\nquoted\n\nafter");
     });
   });
 
   describe("quotes and code blocks", () => {
-    it("renders quotes and preformatted text as their own blocks", () => {
+    it("renders quotes and preformatted text as their own blocks", async () => {
       const value = event([
         { type: "rich_text_quote", elements: [text("quoted\nlines")] },
         list([section(text("item"))]),
         { type: "rich_text_preformatted", elements: [text("a <b> *c*")] },
         section(text("after")),
       ]);
-      const root = converter.toAst(richTextBody(value) ?? "");
-      expect(root.children.map((node) => node.type)).toEqual([
+      const root = await converter.toAst(richTextBody(value) ?? "");
+      expect(root.nodes.map(getNodeTag)).toEqual([
         "blockquote",
-        "list",
-        "code",
-        "paragraph",
+        "ul",
+        "pre",
+        "p",
       ]);
-      expect(root.children[2]).toMatchObject({ value: "a <b> *c*" });
+      expect(getNodeValue(root.nodes[2])).toBe("a <b> *c*");
     });
 
     it("trims long runs of trailing newlines in linear time", () => {

@@ -7,7 +7,7 @@ import {
 } from "./cards";
 
 describe("cardToTwilioText", () => {
-  it("renders cards as plain SMS fallback text", () => {
+  it("renders cards as plain SMS fallback text", async () => {
     const card = {
       children: [
         {
@@ -45,7 +45,7 @@ describe("cardToTwilioText", () => {
 });
 
 describe("encodeTwilioCallbackData / decodeTwilioCallbackData", () => {
-  it("round-trips actionId and value", () => {
+  it("round-trips actionId and value", async () => {
     const encoded = encodeTwilioCallbackData("approve", "yes");
     const decoded = decodeTwilioCallbackData(encoded);
 
@@ -53,7 +53,7 @@ describe("encodeTwilioCallbackData / decodeTwilioCallbackData", () => {
     expect(decoded.value).toBe("yes");
   });
 
-  it("round-trips actionId without value", () => {
+  it("round-trips actionId without value", async () => {
     const encoded = encodeTwilioCallbackData("cancel");
     const decoded = decodeTwilioCallbackData(encoded);
 
@@ -61,19 +61,19 @@ describe("encodeTwilioCallbackData / decodeTwilioCallbackData", () => {
     expect(decoded.value).toBeUndefined();
   });
 
-  it("passes through non-prefixed data as both fields", () => {
+  it("passes through non-prefixed data as both fields", async () => {
     const decoded = decodeTwilioCallbackData("legacy_button_id");
     expect(decoded.actionId).toBe("legacy_button_id");
     expect(decoded.value).toBe("legacy_button_id");
   });
 
-  it("handles undefined data", () => {
+  it("handles undefined data", async () => {
     const decoded = decodeTwilioCallbackData(undefined);
     expect(decoded.actionId).toBe("twilio_callback");
     expect(decoded.value).toBeUndefined();
   });
 
-  it("handles malformed JSON after prefix", () => {
+  it("handles malformed JSON after prefix", async () => {
     const decoded = decodeTwilioCallbackData("chat:{invalid");
     expect(decoded.actionId).toBe("chat:{invalid");
     expect(decoded.value).toBe("chat:{invalid");
@@ -81,7 +81,7 @@ describe("encodeTwilioCallbackData / decodeTwilioCallbackData", () => {
 });
 
 describe("cardToTwilioRcs", () => {
-  it("builds quick-reply content for cards with buttons", () => {
+  it("builds quick-reply content for cards with buttons", async () => {
     const card = {
       children: [
         {
@@ -109,7 +109,7 @@ describe("cardToTwilioRcs", () => {
     }
   });
 
-  it("builds call-to-action content for link buttons", () => {
+  it("builds call-to-action content for link buttons", async () => {
     const card = {
       children: [
         {
@@ -134,7 +134,7 @@ describe("cardToTwilioRcs", () => {
     }
   });
 
-  it("keeps reply buttons when a card mixes in link buttons", () => {
+  it("keeps reply buttons when a card mixes in link buttons", async () => {
     const card = {
       children: [
         {
@@ -169,7 +169,7 @@ describe("cardToTwilioRcs", () => {
     }
   });
 
-  it("keeps overflow links in the body for call-to-action content", () => {
+  it("keeps overflow links in the body for call-to-action content", async () => {
     const links = Array.from({ length: 3 }, (_, i) => ({
       label: `Link ${i}`,
       type: "link-button" as const,
@@ -193,7 +193,7 @@ describe("cardToTwilioRcs", () => {
     }
   });
 
-  it("falls back to text for cards without actions", () => {
+  it("falls back to text for cards without actions", async () => {
     const card = {
       children: [{ content: "Just text", type: "text" as const }],
       title: "Info",
@@ -204,7 +204,7 @@ describe("cardToTwilioRcs", () => {
     expect(result.type).toBe("text");
   });
 
-  it("includes SMS fallback in content types", () => {
+  it("includes SMS fallback in content types", async () => {
     const card = {
       children: [
         {
@@ -226,7 +226,7 @@ describe("cardToTwilioRcs", () => {
     });
   });
 
-  it("handles card with image and buttons as card content", () => {
+  it("handles card with image and buttons as card content", async () => {
     const card = {
       children: [
         {
@@ -252,7 +252,10 @@ describe("cardToTwilioRcs", () => {
   it.each([
     { title: "Many buttons", contentType: "twilio/card" },
     { title: undefined, contentType: "twilio/quick-reply" },
-  ])("keeps the first 11 buttons in $contentType", ({ title, contentType }) => {
+  ])("keeps the first 11 buttons in $contentType", async ({
+    title,
+    contentType,
+  }) => {
     const buttons = Array.from({ length: 15 }, (_, i) => ({
       id: `btn${i}`,
       label: `Button ${i}`,

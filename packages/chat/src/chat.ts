@@ -7,7 +7,6 @@ import {
   restoreCallbackToken,
 } from "./callback-url";
 import { ChannelImpl, type SerializedChannel } from "./channel";
-import { root } from "./markdown";
 import {
   getChatSingleton,
   hasChatSingleton,
@@ -16,6 +15,7 @@ import {
 import { runInConversation } from "./context";
 import { HistoryApiImpl } from "./history";
 import { isJSX, toModalElement } from "./jsx-runtime";
+import { root } from "./markdown";
 import { Message, type SerializedMessage, setMessageAdapter } from "./message";
 import type { ModalElement } from "./modals";
 import { createReviver } from "./reviver";
