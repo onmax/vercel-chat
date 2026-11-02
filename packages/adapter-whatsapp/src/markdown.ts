@@ -82,9 +82,9 @@ export class WhatsAppFormatConverter extends BaseFormatConverter {
   /**
    * Convert an AST to WhatsApp markdown format.
    *
-   * Renders supported formatting directly in WhatsApp syntax, and turns
-   * unsupported nodes into equivalents: headings into bold paragraphs,
-   * thematic breaks into a text separator, and tables into code blocks.
+   * Transforms unsupported nodes (headings, thematic breaks, tables)
+   * into WhatsApp-compatible equivalents and renders supported formatting
+   * directly in WhatsApp syntax.
    */
   fromAst(ast: Root): string {
     return this.fromAstWithNodeConverter(ast, (node) =>

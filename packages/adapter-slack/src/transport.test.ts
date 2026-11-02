@@ -303,7 +303,7 @@ describe("outbound transports", () => {
   it.each([
     [
       "HTML login",
-      async () =>
+      () =>
         incomingMessage(Buffer.from("login"), {
           headers: { "content-type": "text/html" },
         }),
@@ -332,7 +332,7 @@ describe("outbound transports", () => {
   });
 
   it.each([
-    ["never responds", async () => new Promise<never>(() => undefined)],
+    ["never responds", () => new Promise<never>(() => undefined)],
     [
       "stalls the body",
       async () => incomingMessage(new Readable({ read() {} })),

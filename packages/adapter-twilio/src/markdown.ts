@@ -17,7 +17,7 @@ export class TwilioFormatConverter extends BaseFormatConverter {
   }
 
   async fromAst(ast: Root): Promise<string> {
-    const transformed = walkAst(structuredClone(ast), (node: Content) => {
+    const transformed = walkAst(ast, (node: Content) => {
       if (isTableNode(node)) {
         return codeBlock(tableToAscii(node));
       }

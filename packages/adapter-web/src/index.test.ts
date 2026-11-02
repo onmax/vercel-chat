@@ -112,19 +112,19 @@ function buildChat(opts: {
 }
 
 describe("createWebAdapter — construction", () => {
-  it("throws when userName is missing", async () => {
+  it("throws when userName is missing", () => {
     expect(() =>
       createWebAdapter({ getUser: () => TEST_USER } as never)
     ).toThrow(ValidationError);
   });
 
-  it("throws when getUser is missing", async () => {
+  it("throws when getUser is missing", () => {
     expect(() => createWebAdapter({ userName: "testbot" } as never)).toThrow(
       ValidationError
     );
   });
 
-  it("constructs successfully with required options", async () => {
+  it("constructs successfully with required options", () => {
     const adapter = createWebAdapter({
       userName: "testbot",
       getUser: () => TEST_USER,
@@ -142,25 +142,25 @@ describe("WebAdapter — thread id encoding", () => {
     getUser: () => TEST_USER,
   });
 
-  it("encodes and decodes thread ids round-trip", async () => {
+  it("encodes and decodes thread ids round-trip", () => {
     const data = { userId: "u-test", conversationId: "abc-123" };
     const encoded = adapter.encodeThreadId(data);
     expect(encoded).toBe("web:u-test:abc-123");
     expect(adapter.decodeThreadId(encoded)).toEqual(data);
   });
 
-  it("rejects malformed thread ids", async () => {
+  it("rejects malformed thread ids", () => {
     expect(() => adapter.decodeThreadId("not-a-web-thread")).toThrow();
     expect(() => adapter.decodeThreadId("slack:C123:1.2")).toThrow();
   });
 
-  it("uses thread id as channel id (no separate channel concept on web)", async () => {
+  it("uses thread id as channel id (no separate channel concept on web)", () => {
     expect(adapter.channelIdFromThreadId("web:u-test:abc")).toBe(
       "web:u-test:abc"
     );
   });
 
-  it("reports isDM as true for any thread", async () => {
+  it("reports isDM as true for any thread", () => {
     expect(adapter.isDM("web:u-test:any")).toBe(true);
   });
 });
@@ -718,7 +718,7 @@ describe("WebAdapter — AG-UI protocol", () => {
     };
   }
 
-  it("throws on an unknown protocol", async () => {
+  it("throws on an unknown protocol", () => {
     expect(() =>
       createWebAdapter({
         userName: "testbot",

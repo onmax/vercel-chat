@@ -39,24 +39,24 @@ const MARKDOWNV2_SPECIAL_CHARS = [
 
 describe("escapeMarkdownV2", () => {
   for (const char of MARKDOWNV2_SPECIAL_CHARS) {
-    it(`escapes the special character ${JSON.stringify(char)}`, async () => {
+    it(`escapes the special character ${JSON.stringify(char)}`, () => {
       expect(escapeMarkdownV2(`a${char}b`)).toBe(`a\\${char}b`);
     });
   }
 
-  it("leaves non-special ASCII untouched", async () => {
+  it("leaves non-special ASCII untouched", () => {
     expect(escapeMarkdownV2("Hello world 123")).toBe("Hello world 123");
   });
 
-  it("leaves unicode characters untouched", async () => {
+  it("leaves unicode characters untouched", () => {
     expect(escapeMarkdownV2("café — €50")).toBe("café — €50");
   });
 
-  it("escapes multiple special characters in one string", async () => {
+  it("escapes multiple special characters in one string", () => {
     expect(escapeMarkdownV2("a.b!c(d)")).toBe("a\\.b\\!c\\(d\\)");
   });
 
-  it("handles empty input", async () => {
+  it("handles empty input", () => {
     expect(escapeMarkdownV2("")).toBe("");
   });
 });
@@ -484,28 +484,28 @@ describe("TelegramFormatConverter", () => {
 });
 
 describe("truncateForTelegram", () => {
-  it("returns text unchanged when under limit", async () => {
+  it("returns text unchanged when under limit", () => {
     expect(truncateForTelegram("hello", 100, "plain")).toBe("hello");
   });
 
-  it("returns MarkdownV2 that fits the limit unchanged, even with unpaired markers", async () => {
+  it("returns MarkdownV2 that fits the limit unchanged, even with unpaired markers", () => {
     const input = "Hello *world* _italic and bold *bold*";
     expect(truncateForTelegram(input, 4096, "MarkdownV2")).toBe(input);
   });
 
-  it("truncates plain text with literal ellipsis", async () => {
+  it("truncates plain text with literal ellipsis", () => {
     const result = truncateForTelegram("a".repeat(200), 100, "plain");
     expect(result.length).toBe(100);
     expect(result.endsWith("...")).toBe(true);
   });
 
-  it("truncates MarkdownV2 with escaped ellipsis", async () => {
+  it("truncates MarkdownV2 with escaped ellipsis", () => {
     const result = truncateForTelegram("a".repeat(200), 100, "MarkdownV2");
     expect(result.length).toBeLessThanOrEqual(100);
     expect(result.endsWith("\\.\\.\\.")).toBe(true);
   });
 
-  it("strips orphan backslash before ellipsis", async () => {
+  it("strips orphan backslash before ellipsis", () => {
     const input = `${"a".repeat(90)}\\${"b".repeat(50)}`;
     const result = truncateForTelegram(input, 100, "MarkdownV2");
     const beforeEllipsis = result.replace(ESCAPED_ELLIPSIS_PATTERN, "");
@@ -513,7 +513,7 @@ describe("truncateForTelegram", () => {
     expect(result.endsWith("\\.\\.\\.")).toBe(true);
   });
 
-  it("handles input that is all special chars", async () => {
+  it("handles input that is all special chars", () => {
     const input = ".".repeat(200);
     const rendered = escapeMarkdownV2(input);
     const result = truncateForTelegram(rendered, 100, "MarkdownV2");
@@ -521,26 +521,26 @@ describe("truncateForTelegram", () => {
     expect(result.endsWith("\\.\\.\\.")).toBe(true);
   });
 
-  it("does not modify plain parseMode messages", async () => {
+  it("does not modify plain parseMode messages", () => {
     const input = "Hello *world* _unclosed";
     const result = truncateForTelegram(input, 4096, "plain");
     expect(result).toBe(input);
   });
 
-  it("trims back to before the [ when hard-truncated inside a link URL", async () => {
+  it("trims back to before the [ when hard-truncated inside a link URL", () => {
     const prefix = "a".repeat(80);
     const input = `${prefix}[link](https://example.com/${"x".repeat(100)})`;
     const result = truncateForTelegram(input, 100, "MarkdownV2");
     expect(result).toBe(`${prefix}\\.\\.\\.`);
   });
 
-  it("trims at the orphan * when hard-truncated inside bold", async () => {
+  it("trims at the orphan * when hard-truncated inside bold", () => {
     const input = `${"a".repeat(80)}*${"b".repeat(100)}`;
     const result = truncateForTelegram(input, 100, "MarkdownV2");
     expect(result).toBe(`${"a".repeat(80)}\\.\\.\\.`);
   });
 
-  it("trims at the __ opener when hard-truncated inside underline", async () => {
+  it("trims at the __ opener when hard-truncated inside underline", () => {
     const input = `__b__ rest ${"z".repeat(100)}`;
     expect(truncateForTelegram(input, 9, "MarkdownV2")).toBe("\\.\\.\\.");
     expect(truncateForTelegram(input, 11, "MarkdownV2")).toBe("__b__\\.\\.\\.");
@@ -562,7 +562,7 @@ describe("truncateForTelegram", () => {
     expect(result).toContain("&third_param=c)");
   });
 
-  it("retreats before a partial link at every destination cut", async () => {
+  it("retreats before a partial link at every destination cut", () => {
     const prefix = "before ";
     const link = "[x\\]](https://example.com/a\\)`b\\\\)";
     const input = `${prefix}${link} after ${"z".repeat(100)}`;
@@ -582,7 +582,7 @@ describe("truncateForTelegram", () => {
   it.each([
     "`code`",
     "```js\ncode\n```",
-  ])("retreats before code when cutting through its body or delimiters: %s", async (code) => {
+  ])("retreats before code when cutting through its body or delimiters: %s", (code) => {
     const prefix = "[x](https://example.com/a`b) ";
     const input = `${prefix}${code} ${"z".repeat(100)}`;
     for (let cut = 1; cut < code.length; cut++) {
@@ -605,7 +605,7 @@ describe("trimToMarkdownV2SafeBoundary", () => {
     "[a] b",
     "see [ref] and *bold*",
     "*b* [x](u) [y] z",
-  ])("leaves balanced MarkdownV2 unchanged: %s", async (input) => {
+  ])("leaves balanced MarkdownV2 unchanged: %s", (input) => {
     expect(trimToMarkdownV2SafeBoundary(input)).toBe(input);
   });
 
@@ -619,7 +619,7 @@ describe("trimToMarkdownV2SafeBoundary", () => {
     ["a `", "a "],
     ["a ``", "a "],
     ["a ```js\ncode", "a "],
-  ])("drops the unpaired tail of %j", async (input, expected) => {
+  ])("drops the unpaired tail of %j", (input, expected) => {
     expect(trimToMarkdownV2SafeBoundary(input)).toBe(expected);
   });
 
@@ -635,15 +635,12 @@ describe("trimToMarkdownV2SafeBoundary", () => {
     ["\\\\_a", "\\\\"],
     ["\\~a~", "\\~a"],
     ["\\\\~a", "\\\\"],
-  ])("respects escape parity around delimiters: %j", async (input, expected) => {
+  ])("respects escape parity around delimiters: %j", (input, expected) => {
     expect(trimToMarkdownV2SafeBoundary(input)).toBe(expected);
   });
 
   describe("link URLs with raw entity-marker characters", () => {
-    it.each([
-      "`",
-      "```",
-    ])("preserves %s inside a link destination", async (ticks) => {
+    it.each(["`", "```"])("preserves %s inside a link destination", (ticks) => {
       const input = `before [x](https://example.com/a${ticks}b_*~) after`;
       expect(trimToMarkdownV2SafeBoundary(input)).toBe(input);
     });
@@ -681,14 +678,14 @@ describe("trimToMarkdownV2SafeBoundary", () => {
       "before [x](https://example.com/a\\\\`b) after",
       "`[x](https://example.com/a\\`b)`",
       "```\n[x](https://example.com/a\\`b)\n```",
-    ])("preserves links alongside code and escaped delimiters: %s", async (input) => {
+    ])("preserves links alongside code and escaped delimiters: %s", (input) => {
       expect(trimToMarkdownV2SafeBoundary(input)).toBe(input);
     });
 
     it.each([
       "`unfinished",
       "```js\nunfinished",
-    ])("does not let URL backticks balance unfinished code: %s", async (code) => {
+    ])("does not let URL backticks balance unfinished code: %s", (code) => {
       const prefix = "before [x](https://example.com/a`b) ";
       expect(trimToMarkdownV2SafeBoundary(prefix + code)).toBe(prefix);
     });
@@ -698,30 +695,30 @@ describe("trimToMarkdownV2SafeBoundary", () => {
       "[x](https://e.co/?a_b=1&c_d=2&e_f=3)",
       "text *bold* [x](https://e.co/?a_b=1)",
       "[x](https://e.co/?glob=*.ts&home=~user)",
-    ])("preserves a link whose URL contains entity markers: %s", async (input) => {
+    ])("preserves a link whose URL contains entity markers: %s", (input) => {
       expect(trimToMarkdownV2SafeBoundary(input)).toBe(input);
     });
   });
 });
 
 describe("endsWithOrphanBackslash", () => {
-  it("returns true for single trailing backslash", async () => {
+  it("returns true for single trailing backslash", () => {
     expect(endsWithOrphanBackslash("abc\\")).toBe(true);
   });
 
-  it("returns false for double trailing backslash", async () => {
+  it("returns false for double trailing backslash", () => {
     expect(endsWithOrphanBackslash("abc\\\\")).toBe(false);
   });
 
-  it("returns true for triple trailing backslash", async () => {
+  it("returns true for triple trailing backslash", () => {
     expect(endsWithOrphanBackslash("abc\\\\\\")).toBe(true);
   });
 
-  it("returns false for no trailing backslash", async () => {
+  it("returns false for no trailing backslash", () => {
     expect(endsWithOrphanBackslash("abc")).toBe(false);
   });
 
-  it("returns false for empty string", async () => {
+  it("returns false for empty string", () => {
     expect(endsWithOrphanBackslash("")).toBe(false);
   });
 });

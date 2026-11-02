@@ -2259,7 +2259,7 @@ describe("GitHubAdapter", () => {
             ([label, body]) => [eventType, label, body] as const
           )
       )
-    )("parses %s webhooks with %s", async (eventType, _, body) => {
+    )("keeps %s webhooks with %s serializable", async (eventType, _, body) => {
       const message = await dispatchComment(eventType, body);
 
       expect(() => JSON.stringify(message.formatted)).not.toThrow();
@@ -2718,7 +2718,7 @@ describe("GitHubAdapter", () => {
       ["6,000 nested blockquotes", ">".repeat(6000)],
       ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
       ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-    ])("parses a PR title with %s", async (_, title) => {
+    ])("keeps a PR title with %s serializable", async (_, title) => {
       mockPullsList.mockResolvedValueOnce({ data: [pullWithTitle(title)] });
 
       const result = await adapter.listThreads("github:acme/app");

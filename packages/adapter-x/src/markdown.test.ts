@@ -46,42 +46,42 @@ describe("XFormatConverter", () => {
   describe("fromAst", () => {
     it("strips bold and italic markers", async () => {
       const ast = await parseMarkdown("**bold** and *italic*");
-      expect(await converter.fromAst(ast)).toBe("bold and italic");
+      expect(converter.fromAst(ast)).toBe("bold and italic");
     });
 
     it("renders links as label (url)", async () => {
       const ast = await parseMarkdown("[docs](https://chat-sdk.dev)");
-      expect(await converter.fromAst(ast)).toBe("docs (https://chat-sdk.dev)");
+      expect(converter.fromAst(ast)).toBe("docs (https://chat-sdk.dev)");
     });
 
     it("renders bare links as the url only", async () => {
       const ast = await parseMarkdown("<https://chat-sdk.dev>");
-      expect(await converter.fromAst(ast)).toBe("https://chat-sdk.dev");
+      expect(converter.fromAst(ast)).toBe("https://chat-sdk.dev");
     });
 
     it("renders unordered lists with bullets", async () => {
       const ast = await parseMarkdown("- one\n- two");
-      expect(await converter.fromAst(ast)).toBe("• one\n• two");
+      expect(converter.fromAst(ast)).toBe("• one\n• two");
     });
 
     it("renders ordered lists with numbers", async () => {
       const ast = await parseMarkdown("1. one\n2. two");
-      expect(await converter.fromAst(ast)).toBe("1. one\n2. two");
+      expect(converter.fromAst(ast)).toBe("1. one\n2. two");
     });
 
     it("keeps code block content without fences", async () => {
       const ast = await parseMarkdown("```ts\nconst a = 1;\n```");
-      expect(await converter.fromAst(ast)).toBe("const a = 1;");
+      expect(converter.fromAst(ast)).toBe("const a = 1;");
     });
 
     it("flattens headings to plain text", async () => {
       const ast = await parseMarkdown("# Title");
-      expect(await converter.fromAst(ast)).toBe("Title");
+      expect(converter.fromAst(ast)).toBe("Title");
     });
 
     it("renders tables as ascii", async () => {
       const ast = await parseMarkdown("| a | b |\n| - | - |\n| 1 | 2 |");
-      const output = await converter.fromAst(ast);
+      const output = converter.fromAst(ast);
       expect(output).toContain("a");
       expect(output).toContain("|");
       expect(output).toContain("1");

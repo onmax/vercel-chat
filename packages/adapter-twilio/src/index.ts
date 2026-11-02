@@ -430,7 +430,7 @@ export class TwilioAdapter
       if (raw.kind !== "text") {
         throw new ValidationError("twilio", "Cannot parse unsupported webhook");
       }
-      return await this.parseTwilioTextPayload(
+      return this.parseTwilioTextPayload(
         raw,
         this.encodeThreadId({
           recipient: raw.from,
@@ -438,7 +438,7 @@ export class TwilioAdapter
         })
       );
     }
-    return await this.parseTwilioResource(raw, undefined);
+    return this.parseTwilioResource(raw, undefined);
   }
 
   async fetchMessage(

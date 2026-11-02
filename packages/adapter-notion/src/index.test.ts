@@ -142,26 +142,26 @@ describe("createNotionAdapter", () => {
     process.env = originalEnv;
   });
 
-  it("creates from explicit config", async () => {
+  it("creates from explicit config", () => {
     const adapter = createTestAdapter();
     expect(adapter.name).toBe("notion");
     expect(adapter.userName).toBe("notion-bot");
   });
 
-  it("accepts an async token resolver", async () => {
+  it("accepts an async token resolver", () => {
     const adapter = createTestAdapter({
       token: async () => TOKEN,
     });
     expect(adapter.name).toBe("notion");
   });
 
-  it("throws ValidationError when token missing", async () => {
+  it("throws ValidationError when token missing", () => {
     expect(() =>
       createNotionAdapter({ verificationToken: VERIFICATION_TOKEN })
     ).toThrow(ValidationError);
   });
 
-  it("allows construction without verificationToken for handshake bootstrap", async () => {
+  it("allows construction without verificationToken for handshake bootstrap", () => {
     const adapter = createNotionAdapter({
       token: TOKEN,
       logger: createMockLogger(),
@@ -169,7 +169,7 @@ describe("createNotionAdapter", () => {
     expect(adapter.name).toBe("notion");
   });
 
-  it("reads credentials from env", async () => {
+  it("reads credentials from env", () => {
     process.env.NOTION_TOKEN = TOKEN;
     process.env.NOTION_VERIFICATION_TOKEN = VERIFICATION_TOKEN;
     process.env.NOTION_BOT_USERNAME = "docs-bot";
@@ -177,7 +177,7 @@ describe("createNotionAdapter", () => {
     expect(adapter.userName).toBe("docs-bot");
   });
 
-  it("reads mentionMode and keywords from env", async () => {
+  it("reads mentionMode and keywords from env", () => {
     process.env.NOTION_TOKEN = TOKEN;
     process.env.NOTION_VERIFICATION_TOKEN = VERIFICATION_TOKEN;
     process.env.NOTION_MENTION_MODE = "keyword";
@@ -191,7 +191,7 @@ describe("createNotionAdapter", () => {
     ).toEqual(["@docs", "help"]);
   });
 
-  it("falls back to mention on invalid NOTION_MENTION_MODE", async () => {
+  it("falls back to mention on invalid NOTION_MENTION_MODE", () => {
     process.env.NOTION_TOKEN = TOKEN;
     process.env.NOTION_VERIFICATION_TOKEN = VERIFICATION_TOKEN;
     process.env.NOTION_MENTION_MODE = "nope";
@@ -203,7 +203,7 @@ describe("createNotionAdapter", () => {
     expect(vi.mocked(logger.warn)).toHaveBeenCalled();
   });
 
-  it("config overrides env for mentionMode", async () => {
+  it("config overrides env for mentionMode", () => {
     process.env.NOTION_TOKEN = TOKEN;
     process.env.NOTION_VERIFICATION_TOKEN = VERIFICATION_TOKEN;
     process.env.NOTION_MENTION_MODE = "all-comments";
@@ -275,7 +275,7 @@ threadIdContract({
 });
 
 describe("UUID normalization", () => {
-  it("normalizes compact UUIDs on decode", async () => {
+  it("normalizes compact UUIDs on decode", () => {
     const adapter = createTestAdapter();
     const compact = PAGE_ID.replace(/-/g, "");
     expect(adapter.decodeThreadId(`notion:${compact}`)).toEqual({
@@ -283,7 +283,7 @@ describe("UUID normalization", () => {
     });
   });
 
-  it("rejects malformed thread IDs", async () => {
+  it("rejects malformed thread IDs", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("notion:not-a-uuid")).toThrow(
       ValidationError
@@ -291,7 +291,7 @@ describe("UUID normalization", () => {
     expect(() => adapter.decodeThreadId("slack:C123")).toThrow(ValidationError);
   });
 
-  it("prefers discussionId over blockId when encoding", async () => {
+  it("prefers discussionId over blockId when encoding", () => {
     const adapter = createTestAdapter();
     const blockId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
     expect(
@@ -303,7 +303,7 @@ describe("UUID normalization", () => {
     ).toBe(`notion:${PAGE_ID}:${DISCUSSION_ID}`);
   });
 
-  it("channelIdFromThreadId ignores block segment", async () => {
+  it("channelIdFromThreadId ignores block segment", () => {
     const adapter = createTestAdapter();
     const blockId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
     expect(
@@ -2513,15 +2513,15 @@ describe("postMessage target ownership", () => {
 });
 
 describe("chunkMarkdown", () => {
-  it("returns a single chunk when under the limit", async () => {
+  it("returns a single chunk when under the limit", () => {
     expect(chunkMarkdown("hello world", 1900)).toEqual(["hello world"]);
   });
 
-  it("returns nothing for empty input", async () => {
+  it("returns nothing for empty input", () => {
     expect(chunkMarkdown("", 1900)).toEqual([]);
   });
 
-  it("splits on paragraph boundaries without dropping content", async () => {
+  it("splits on paragraph boundaries without dropping content", () => {
     const para = "a".repeat(80);
     const text = Array.from({ length: 5 }, () => para).join("\n\n");
     const chunks = chunkMarkdown(text, 200);
@@ -2534,7 +2534,7 @@ describe("chunkMarkdown", () => {
     );
   });
 
-  it("hard-splits a single line longer than the limit", async () => {
+  it("hard-splits a single line longer than the limit", () => {
     const chunks = chunkMarkdown("z".repeat(500), 200);
     expect(chunks).toHaveLength(3);
     for (const chunk of chunks) {

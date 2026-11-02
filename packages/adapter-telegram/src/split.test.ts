@@ -137,16 +137,16 @@ describe("splitText", () => {
 
     // The placeholder starts at index 8, so the longest fitting prefix
     // without a placeholder ("aaaaaaaa{{") ends inside it.
-    expect(await fits(value)).toBe(false);
-    expect(await fits(value.slice(0, 10))).toBe(true);
-    expect(await fits(value.slice(0, 11))).toBe(false);
+    expect(fits(value)).toBe(false);
+    expect(fits(value.slice(0, 10))).toBe(true);
+    expect(fits(value.slice(0, 11))).toBe(false);
     expect(value.indexOf("{{emoji:")).toBe(8);
 
     const parts = await splitText(value, fits);
 
     expect(parts).toEqual(["aaaaaaaa", "{{emoji:thumbs_up}}bbbb"]);
     for (const part of parts) {
-      expect(await fits(part)).toBe(true);
+      expect(fits(part)).toBe(true);
     }
   });
 });
@@ -172,7 +172,7 @@ describe("splitMarkdownAst", () => {
     const url = `https://example.com/${"x".repeat(200)}`;
     const root = await parseMarkdown(`[click here](${url})`);
     const fits = fitsRendered(100);
-    expect(await fits(await parseMarkdown(`[c](${url})`))).toBe(false);
+    expect(fits(await parseMarkdown(`[c](${url})`))).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
@@ -189,18 +189,18 @@ describe("splitMarkdownAst", () => {
     ).join("\n\n");
     const fits = fitsRendered(200);
     const root = await parseMarkdown(markdown);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
     expect(parts.length).toBeGreaterThan(1);
     for (const part of parts) {
-      expect(await fits(part)).toBe(true);
+      expect(fits(part)).toBe(true);
     }
     // Each part is full: the next block would not have fit in it.
     for (const [index, part] of parts.slice(0, -1).entries()) {
       const next = parts[index + 1]?.nodes[0] as Content;
-      expect(await fits(rootOf(...part.nodes, next))).toBe(false);
+      expect(fits(rootOf(...part.nodes, next))).toBe(false);
     }
     expect(
       (await Promise.all(parts.map(stringifyMarkdown)))
@@ -213,7 +213,7 @@ describe("splitMarkdownAst", () => {
     const runWords = words(60);
     const root = await parseMarkdown(`**${runWords.join(" ")}**`);
     const fits = fitsRendered(100);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
@@ -233,7 +233,7 @@ describe("splitMarkdownAst", () => {
     const lines = Array.from({ length: 50 }, (_, index) => `line ${index}`);
     const root = await parseMarkdown(`\`\`\`ts\n${lines.join("\n")}\n\`\`\``);
     const fits = fitsRendered(120);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
@@ -246,7 +246,7 @@ describe("splitMarkdownAst", () => {
         expect(getCodeLanguage(code)).toBe("ts");
         values.push(getNodeValue(code));
       }
-      expect(await fits(part)).toBe(true);
+      expect(fits(part)).toBe(true);
     }
     expect(values.join("\n")).toBe(lines.join("\n"));
   });
@@ -257,7 +257,7 @@ describe("splitMarkdownAst", () => {
     const value = "short\nalpha beta gamma delta epsilon\nzeta eta";
     const root = rootOf(codeBlock(value));
     const fits = fitsRendered(40);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
@@ -268,7 +268,7 @@ describe("splitMarkdownAst", () => {
     ]);
     for (const part of parts) {
       expect(typesOf(part)).toEqual(["pre"]);
-      expect(await fits(part)).toBe(true);
+      expect(fits(part)).toBe(true);
     }
   });
 
@@ -276,7 +276,7 @@ describe("splitMarkdownAst", () => {
     const value = "one two three four five six seven eight";
     const root = rootOf(codeBlock(value));
     const fits = fitsRendered(40);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
@@ -293,7 +293,7 @@ describe("splitMarkdownAst", () => {
     ).join("\n");
     const fits = fitsRendered(150);
     const root = await parseMarkdown(markdown);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 
@@ -313,7 +313,7 @@ describe("splitMarkdownAst", () => {
       const bold = await parseMarkdown(`**${runWords.join(" ")}**`);
       const root = await parseMarkdown(`Note:\n\n**${runWords.join(" ")}**`);
       const fits = fitsRendered(100);
-      expect(await fits(bold)).toBe(false);
+      expect(fits(bold)).toBe(false);
 
       const parts = await splitMarkdownAst(root, fits);
 
@@ -327,7 +327,7 @@ describe("splitMarkdownAst", () => {
         expect(typesOf(part)).toEqual(["p"]);
       }
       for (const part of parts) {
-        expect(await fits(part)).toBe(true);
+        expect(fits(part)).toBe(true);
       }
       const runs = parts.map((part) => textOf(part.nodes.at(-1) as Content));
       expect(runs.join(" ")).toBe(runWords.join(" "));
@@ -339,7 +339,7 @@ describe("splitMarkdownAst", () => {
         `## Title\n\n\`\`\`\n${lines.join("\n")}\n\`\`\``
       );
       const fits = fitsRendered(80);
-      expect(await fits(rootOf(root.nodes[1] as Content))).toBe(false);
+      expect(fits(rootOf(root.nodes[1] as Content))).toBe(false);
 
       const parts = await splitMarkdownAst(root, fits);
 
@@ -349,7 +349,7 @@ describe("splitMarkdownAst", () => {
         expect(typesOf(part)).toEqual(["pre"]);
       }
       for (const part of parts) {
-        expect(await fits(part)).toBe(true);
+        expect(fits(part)).toBe(true);
       }
       const values = parts.map((part) => textOf(part.nodes.at(-1) as Content));
       expect(values.join("\n")).toBe(lines.join("\n"));
@@ -359,7 +359,7 @@ describe("splitMarkdownAst", () => {
       const quoteWords = words(30);
       const root = await parseMarkdown(`# Title\n\n> ${quoteWords.join(" ")}`);
       const fits = fitsRendered(100);
-      expect(await fits(rootOf(root.nodes[1] as Content))).toBe(false);
+      expect(fits(rootOf(root.nodes[1] as Content))).toBe(false);
 
       const parts = await splitMarkdownAst(root, fits);
 
@@ -369,7 +369,7 @@ describe("splitMarkdownAst", () => {
         expect(typesOf(part)).toEqual(["blockquote"]);
       }
       for (const part of parts) {
-        expect(await fits(part)).toBe(true);
+        expect(fits(part)).toBe(true);
       }
       const quoted = parts.map((part) => textOf(part.nodes.at(-1) as Content));
       expect(quoted.join(" ")).toBe(quoteWords.join(" "));
@@ -387,7 +387,7 @@ describe("splitMarkdownAst", () => {
         return;
       }
       expect(
-        await fits(
+        fits(
           rootOf([
             "ol",
             { ...list[1], start: "3" },
@@ -414,7 +414,7 @@ describe("splitMarkdownAst", () => {
         })
       ).toEqual([1, 3, 4]);
       for (const part of parts) {
-        expect(await fits(part)).toBe(true);
+        expect(fits(part)).toBe(true);
       }
     });
 
@@ -427,7 +427,7 @@ describe("splitMarkdownAst", () => {
         `Intro.\n\n| Name | Value |\n|---|---|\n${rows.join("\n")}`
       );
       const fits = fitsRendered(120);
-      expect(await fits(rootOf(root.nodes[1] as Content))).toBe(false);
+      expect(fits(rootOf(root.nodes[1] as Content))).toBe(false);
 
       const parts = await splitMarkdownAst(root, fits);
 
@@ -435,7 +435,7 @@ describe("splitMarkdownAst", () => {
       expect(typesOf(parts[0] as Root)).toEqual(["p", "table"]);
       const seen: string[] = [];
       for (const [index, table] of tableRows(parts).entries()) {
-        expect(await fits(parts[index] as Root)).toBe(true);
+        expect(fits(parts[index] as Root)).toBe(true);
         expect(table[0]).toEqual(["Name", "Value"]);
         seen.push(...table.slice(1).map((row) => row.join("|")));
       }
@@ -457,18 +457,18 @@ describe("splitMarkdownAst", () => {
       const fits = fitsRendered(120);
       expect(getNodeTag(table)).toBe("table");
       // Only the header row fits beside the paragraph.
-      expect(await fits(rootOf(table))).toBe(false);
+      expect(fits(rootOf(table))).toBe(false);
       const withRows = (count: number) =>
         rootOf(introBlock, tableOf(table, rowsOf(table).slice(0, count)));
-      expect(await fits(withRows(1))).toBe(true);
-      expect(await fits(withRows(2))).toBe(false);
+      expect(fits(withRows(1))).toBe(true);
+      expect(fits(withRows(2))).toBe(false);
 
       const parts = await splitMarkdownAst(root, fits);
 
       expect(parts[0]?.nodes).toEqual([introBlock]);
       const seen: string[] = [];
       for (const [index, cells] of tableRows(parts.slice(1)).entries()) {
-        expect(await fits(parts[index + 1] as Root)).toBe(true);
+        expect(fits(parts[index + 1] as Root)).toBe(true);
         expect(cells[0]).toEqual(["Name", "Value"]);
         expect(cells.length).toBeGreaterThan(1);
         seen.push(...cells.slice(1).map((row) => row.join("|")));
@@ -498,7 +498,7 @@ describe("splitMarkdownAst", () => {
       );
       const fits = fitsRendered(40);
       // The paragraph, the blank line, and an empty fence already exceed 40.
-      expect(await fits(rootOf(root.nodes[0] as Content, codeBlock("l")))).toBe(
+      expect(fits(rootOf(root.nodes[0] as Content, codeBlock("l")))).toBe(
         false
       );
 
@@ -508,7 +508,7 @@ describe("splitMarkdownAst", () => {
       expect(parts[0]?.nodes).toEqual([root.nodes[0]]);
       for (const part of parts.slice(1)) {
         expect(typesOf(part)).toEqual(["pre"]);
-        expect(await fits(part)).toBe(true);
+        expect(fits(part)).toBe(true);
       }
       const values = parts.slice(1).map((part) => textOf(part));
       expect(values.join("\n")).toBe(lines.join("\n"));
@@ -632,9 +632,9 @@ describe("splitMarkdownAst", () => {
       const fits = fitsRendered(200);
       // The header fits on its own but not with a body row, so repeating it
       // would force every row apart.
-      expect(await fits(await parseMarkdown(headerRow))).toBe(true);
+      expect(fits(await parseMarkdown(headerRow))).toBe(true);
       expect(
-        await fits(await parseMarkdown(`${headerRow}\n| a | ${wideCell} |`))
+        fits(await parseMarkdown(`${headerRow}\n| a | ${wideCell} |`))
       ).toBe(false);
 
       const parts = await splitMarkdownAst(await parseMarkdown(markdown), fits);
@@ -1619,7 +1619,7 @@ describe("splitMarkdownAst with definitions inside containers", () => {
       ].join("\n\n")
     );
     const fits = fitsRendered(120);
-    expect(await fits(root)).toBe(false);
+    expect(fits(root)).toBe(false);
 
     const parts = await splitMarkdownAst(root, fits);
 

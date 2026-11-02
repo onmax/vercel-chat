@@ -43,12 +43,12 @@ const mockLogger = createMockLogger();
 
 const mockFetch = vi.fn<typeof fetch>();
 
-beforeEach(async () => {
+beforeEach(() => {
   mockFetch.mockReset();
   vi.stubGlobal("fetch", mockFetch);
 });
 
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllGlobals();
 });
 
@@ -102,7 +102,7 @@ function createAdapter() {
 
 describe("MessengerAdapter", () => {
   describe("factory function", () => {
-    it("throws when app secret is missing", async () => {
+    it("throws when app secret is missing", () => {
       process.env.FACEBOOK_APP_SECRET = "";
       process.env.FACEBOOK_PAGE_ACCESS_TOKEN = "token";
       process.env.FACEBOOK_VERIFY_TOKEN = "verify";
@@ -112,7 +112,7 @@ describe("MessengerAdapter", () => {
       );
     });
 
-    it("throws when page access token is missing", async () => {
+    it("throws when page access token is missing", () => {
       process.env.FACEBOOK_APP_SECRET = "secret";
       process.env.FACEBOOK_PAGE_ACCESS_TOKEN = "";
       process.env.FACEBOOK_VERIFY_TOKEN = "verify";
@@ -122,7 +122,7 @@ describe("MessengerAdapter", () => {
       );
     });
 
-    it("throws when verify token is missing", async () => {
+    it("throws when verify token is missing", () => {
       process.env.FACEBOOK_APP_SECRET = "secret";
       process.env.FACEBOOK_PAGE_ACCESS_TOKEN = "token";
       process.env.FACEBOOK_VERIFY_TOKEN = "";
@@ -132,7 +132,7 @@ describe("MessengerAdapter", () => {
       );
     });
 
-    it("uses env vars when config is omitted", async () => {
+    it("uses env vars when config is omitted", () => {
       process.env.FACEBOOK_APP_SECRET = "secret";
       process.env.FACEBOOK_PAGE_ACCESS_TOKEN = "token";
       process.env.FACEBOOK_VERIFY_TOKEN = "verify";
@@ -147,7 +147,7 @@ describe("MessengerAdapter", () => {
     // encode/decode round-trip + pinned-string coverage lives in the shared
     // `threadIdContract` at the bottom of this file; only the malformed-id and
     // raw-resolution edge cases the contract does not cover are kept here.
-    it("throws on invalid thread IDs", async () => {
+    it("throws on invalid thread IDs", () => {
       const adapter = createAdapter();
 
       expect(() => adapter.decodeThreadId("invalid")).toThrow(ValidationError);
@@ -159,14 +159,14 @@ describe("MessengerAdapter", () => {
       );
     });
 
-    it("rejects thread ID with extra colons", async () => {
+    it("rejects thread ID with extra colons", () => {
       const adapter = createAdapter();
       expect(() => adapter.decodeThreadId("messenger:foo:bar")).toThrow(
         ValidationError
       );
     });
 
-    it("rejects empty thread ID", async () => {
+    it("rejects empty thread ID", () => {
       const adapter = createAdapter();
       expect(() => adapter.decodeThreadId("")).toThrow(ValidationError);
     });
@@ -1291,7 +1291,7 @@ describe("MessengerAdapter", () => {
       expect(parsed.isMention).toBe(true);
     });
 
-    it("marks echo messages as isMe and isBot", async () => {
+    it("marks echo messages as isMe and isBot", () => {
       const adapter = createAdapter();
       const chat = createMockChat();
       mockFetch.mockResolvedValueOnce(
@@ -1853,12 +1853,12 @@ describe("MessengerAdapter", () => {
   });
 
   describe("DM operations", () => {
-    it("always reports isDM as true", async () => {
+    it("always reports isDM as true", () => {
       const adapter = createAdapter();
       expect(adapter.isDM("messenger:USER_123")).toBe(true);
     });
 
-    it("channelIdFromThreadId returns the thread ID", async () => {
+    it("channelIdFromThreadId returns the thread ID", () => {
       const adapter = createAdapter();
       expect(adapter.channelIdFromThreadId("messenger:USER_123")).toBe(
         "messenger:USER_123"

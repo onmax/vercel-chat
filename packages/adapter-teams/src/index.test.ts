@@ -1426,7 +1426,7 @@ describe("TeamsAdapter", () => {
   // ==========================================================================
 
   describe("renderFormatted", () => {
-    it("should delegate to format converter", async () => {
+    it("should delegate to format converter", () => {
       const adapter = createTeamsAdapter({
         appId: "test",
         appPassword: "test",
@@ -1435,7 +1435,7 @@ describe("TeamsAdapter", () => {
 
       const ast = root([["p", {}, "Hello world"]]);
 
-      const result = await adapter.renderFormatted(ast);
+      const result = adapter.renderFormatted(ast);
       expect(typeof result).toBe("string");
       expect(result).toContain("Hello world");
     });

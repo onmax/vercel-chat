@@ -589,7 +589,7 @@ type SlackContentSource =
 
 type SlackMrkdwnParser = (mrkdwn: string) => FormattedContent;
 
-/** Every mrkdwn string the content of one message parses, parsed up front. */
+/** Every mrkdwn string the content of one message parses. */
 function contentParts(
   source: SlackContentSource,
   attachments: SlackAttachmentContent[]

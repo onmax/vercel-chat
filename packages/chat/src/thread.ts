@@ -1290,12 +1290,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
         }
         postable = await self.processCallbackUrls(postable);
         await adapter.editMessage(threadId, messageId, postable);
-        return await self.createSentMessage(
-          messageId,
-          postable,
-          threadId,
-          replyTo
-        );
+        return self.createSentMessage(messageId, postable, threadId, replyTo);
       },
 
       async delete(): Promise<void> {
@@ -1352,7 +1347,7 @@ export class ThreadImpl<TState = Record<string, unknown>>
         }
         postable = await self.processCallbackUrls(postable);
         await adapter.editMessage(threadId, messageId, postable);
-        return await self.createSentMessage(
+        return self.createSentMessage(
           messageId,
           postable,
           threadId,

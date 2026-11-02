@@ -226,7 +226,7 @@ async function waitForCondition(
 }
 
 describe("createTelegramAdapter", () => {
-  it("throws when bot token is missing", async () => {
+  it("throws when bot token is missing", () => {
     process.env.TELEGRAM_BOT_TOKEN = "";
 
     expect(() => createTelegramAdapter({ logger: mockLogger })).toThrow(
@@ -234,7 +234,7 @@ describe("createTelegramAdapter", () => {
     );
   });
 
-  it("requires verification in webhook mode", async () => {
+  it("requires verification in webhook mode", () => {
     expect(() =>
       createTelegramAdapter({
         allowUnverifiedWebhooks: false,
@@ -245,7 +245,7 @@ describe("createTelegramAdapter", () => {
     ).toThrow("secretToken is required in webhook mode");
   });
 
-  it("allows explicit unverified webhook mode", async () => {
+  it("allows explicit unverified webhook mode", () => {
     expect(
       createTelegramAdapter({
         allowUnverifiedWebhooks: true,
@@ -256,7 +256,7 @@ describe("createTelegramAdapter", () => {
     ).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("allows polling mode without webhook verification", async () => {
+  it("allows polling mode without webhook verification", () => {
     expect(
       createTelegramAdapter({
         botToken: "token",
@@ -266,7 +266,7 @@ describe("createTelegramAdapter", () => {
     ).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("uses env vars when config is omitted", async () => {
+  it("uses env vars when config is omitted", () => {
     process.env.TELEGRAM_BOT_TOKEN = "token-from-env";
 
     const adapter = createTelegramAdapter({ logger: mockLogger });
@@ -274,7 +274,7 @@ describe("createTelegramAdapter", () => {
     expect(adapter.name).toBe("telegram");
   });
 
-  it("persists thread history by default", async () => {
+  it("persists thread history by default", () => {
     const adapter = createTelegramAdapter({
       botToken: "token",
       logger: mockLogger,
@@ -282,7 +282,7 @@ describe("createTelegramAdapter", () => {
     expect(adapter.persistThreadHistory).toBe(true);
   });
 
-  it("turns thread history persistence off when configured", async () => {
+  it("turns thread history persistence off when configured", () => {
     const adapter = createTelegramAdapter({
       botToken: "token",
       logger: mockLogger,
@@ -291,7 +291,7 @@ describe("createTelegramAdapter", () => {
     expect(adapter.persistThreadHistory).toBe(false);
   });
 
-  it("lets a subclass turn thread history persistence off", async () => {
+  it("lets a subclass turn thread history persistence off", () => {
     class NoHistoryAdapter extends TelegramAdapter {
       override readonly persistThreadHistory = false;
     }
@@ -302,7 +302,7 @@ describe("createTelegramAdapter", () => {
     expect(adapter.persistThreadHistory).toBe(false);
   });
 
-  it("accepts an async bot token resolver", async () => {
+  it("accepts an async bot token resolver", () => {
     const adapter = createTelegramAdapter({
       botToken: async () => "resolved-token",
       logger: mockLogger,
@@ -388,31 +388,31 @@ describe("constructor env var resolution", () => {
     process.env = { ...savedEnv };
   });
 
-  it("should throw when botToken is missing and env var not set", async () => {
+  it("should throw when botToken is missing and env var not set", () => {
     expect(() => new TelegramAdapter({})).toThrow("botToken is required");
   });
 
-  it("should resolve botToken from TELEGRAM_BOT_TOKEN env var", async () => {
+  it("should resolve botToken from TELEGRAM_BOT_TOKEN env var", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     const adapter = new TelegramAdapter();
     expect(adapter).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("should resolve secretToken from TELEGRAM_WEBHOOK_SECRET_TOKEN env var", async () => {
+  it("should resolve secretToken from TELEGRAM_WEBHOOK_SECRET_TOKEN env var", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_WEBHOOK_SECRET_TOKEN = "env-secret";
     const adapter = new TelegramAdapter();
     expect(adapter).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("should resolve allowUnverifiedWebhooks from TELEGRAM_ALLOW_UNVERIFIED_WEBHOOKS", async () => {
+  it("should resolve allowUnverifiedWebhooks from TELEGRAM_ALLOW_UNVERIFIED_WEBHOOKS", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_ALLOW_UNVERIFIED_WEBHOOKS = "true";
     const adapter = new TelegramAdapter({ mode: "webhook" });
     expect(adapter).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("should reject TELEGRAM_ALLOW_UNVERIFIED_WEBHOOKS=false in webhook mode", async () => {
+  it("should reject TELEGRAM_ALLOW_UNVERIFIED_WEBHOOKS=false in webhook mode", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_ALLOW_UNVERIFIED_WEBHOOKS = "false";
     expect(() => new TelegramAdapter({ mode: "webhook" })).toThrow(
@@ -420,21 +420,21 @@ describe("constructor env var resolution", () => {
     );
   });
 
-  it("should resolve userName from TELEGRAM_BOT_USERNAME env var", async () => {
+  it("should resolve userName from TELEGRAM_BOT_USERNAME env var", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_BOT_USERNAME = "env_bot_name";
     const adapter = new TelegramAdapter();
     expect(adapter.userName).toBe("env_bot_name");
   });
 
-  it("should resolve apiBaseUrl from TELEGRAM_API_BASE_URL env var", async () => {
+  it("should resolve apiBaseUrl from TELEGRAM_API_BASE_URL env var", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_API_BASE_URL = "https://custom-api.example.com";
     const adapter = new TelegramAdapter();
     expect(adapter).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("should resolve allowedUserIds from TELEGRAM_ALLOWED_USER_IDS env var", async () => {
+  it("should resolve allowedUserIds from TELEGRAM_ALLOWED_USER_IDS env var", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_ALLOWED_USER_IDS = "123, 456";
     const adapter = new TelegramAdapter();
@@ -443,7 +443,7 @@ describe("constructor env var resolution", () => {
     ).toEqual(new Set(["123", "456"]));
   });
 
-  it("should allow all users when TELEGRAM_ALLOWED_USER_IDS is empty", async () => {
+  it("should allow all users when TELEGRAM_ALLOWED_USER_IDS is empty", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     process.env.TELEGRAM_ALLOWED_USER_IDS = " , ";
     const adapter = new TelegramAdapter();
@@ -452,7 +452,7 @@ describe("constructor env var resolution", () => {
     ).toBeUndefined();
   });
 
-  it("should accept apiUrl config and prefer it over apiBaseUrl", async () => {
+  it("should accept apiUrl config and prefer it over apiBaseUrl", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     const adapter = new TelegramAdapter({
       botToken: "token",
@@ -464,7 +464,7 @@ describe("constructor env var resolution", () => {
     );
   });
 
-  it("should fall back to apiBaseUrl when apiUrl is not set", async () => {
+  it("should fall back to apiBaseUrl when apiUrl is not set", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     const adapter = new TelegramAdapter({
       botToken: "token",
@@ -475,13 +475,13 @@ describe("constructor env var resolution", () => {
     );
   });
 
-  it("should default logger when not provided", async () => {
+  it("should default logger when not provided", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-bot-token";
     const adapter = new TelegramAdapter();
     expect(adapter).toBeInstanceOf(TelegramAdapter);
   });
 
-  it("should prefer config values over env vars", async () => {
+  it("should prefer config values over env vars", () => {
     process.env.TELEGRAM_BOT_TOKEN = "env-token";
     process.env.TELEGRAM_BOT_USERNAME = "env-name";
     const adapter = new TelegramAdapter({
@@ -5889,74 +5889,74 @@ describe("message length limits", () => {
 });
 
 describe("applyTelegramEntities", () => {
-  it("returns text unchanged when no entities", async () => {
+  it("returns text unchanged when no entities", () => {
     expect(applyTelegramEntities("hello world", [])).toBe("hello world");
   });
 
-  it("converts text_link entities to markdown links", async () => {
+  it("converts text_link entities to markdown links", () => {
     const result = applyTelegramEntities("Visit our website for details", [
       { type: "text_link", offset: 10, length: 7, url: "https://example.com" },
     ]);
     expect(result).toBe("Visit our [website](https://example.com) for details");
   });
 
-  it("converts bold entities to markdown bold", async () => {
+  it("converts bold entities to markdown bold", () => {
     const result = applyTelegramEntities("hello world", [
       { type: "bold", offset: 6, length: 5 },
     ]);
     expect(result).toBe("hello **world**");
   });
 
-  it("converts italic entities to markdown italic", async () => {
+  it("converts italic entities to markdown italic", () => {
     const result = applyTelegramEntities("hello world", [
       { type: "italic", offset: 0, length: 5 },
     ]);
     expect(result).toBe("*hello* world");
   });
 
-  it("converts code entities to inline code", async () => {
+  it("converts code entities to inline code", () => {
     const result = applyTelegramEntities("use the console.log function", [
       { type: "code", offset: 8, length: 11 },
     ]);
     expect(result).toBe("use the `console.log` function");
   });
 
-  it("converts pre entities to code blocks", async () => {
+  it("converts pre entities to code blocks", () => {
     const result = applyTelegramEntities("const x = 1", [
       { type: "pre", offset: 0, length: 11 },
     ]);
     expect(result).toBe("```\nconst x = 1\n```");
   });
 
-  it("converts pre entities with language", async () => {
+  it("converts pre entities with language", () => {
     const result = applyTelegramEntities("const x = 1", [
       { type: "pre", offset: 0, length: 11, language: "typescript" },
     ]);
     expect(result).toBe("```typescript\nconst x = 1\n```");
   });
 
-  it("converts strikethrough entities", async () => {
+  it("converts strikethrough entities", () => {
     const result = applyTelegramEntities("old text here", [
       { type: "strikethrough", offset: 0, length: 8 },
     ]);
     expect(result).toBe("~~old text~~ here");
   });
 
-  it("leaves url entities unchanged (already in text)", async () => {
+  it("leaves url entities unchanged (already in text)", () => {
     const result = applyTelegramEntities("check https://example.com out", [
       { type: "url", offset: 6, length: 19 },
     ]);
     expect(result).toBe("check https://example.com out");
   });
 
-  it("leaves mention entities unchanged", async () => {
+  it("leaves mention entities unchanged", () => {
     const result = applyTelegramEntities("hey @user check this", [
       { type: "mention", offset: 4, length: 5 },
     ]);
     expect(result).toBe("hey @user check this");
   });
 
-  it("handles multiple non-overlapping entities", async () => {
+  it("handles multiple non-overlapping entities", () => {
     const result = applyTelegramEntities("hello world foo", [
       { type: "bold", offset: 0, length: 5 },
       { type: "italic", offset: 6, length: 5 },
@@ -5964,7 +5964,7 @@ describe("applyTelegramEntities", () => {
     expect(result).toBe("**hello** *world* foo");
   });
 
-  it("handles text_link with special markdown chars in text", async () => {
+  it("handles text_link with special markdown chars in text", () => {
     const result = applyTelegramEntities("click [here]", [
       { type: "text_link", offset: 6, length: 6, url: "https://example.com" },
     ]);
@@ -6434,7 +6434,7 @@ describe("mention regex caching", () => {
     }
   }
 
-  it("matches with the cached regex and recompiles when the username changes", async () => {
+  it("matches with the cached regex and recompiles when the username changes", () => {
     const adapter = new MentionTestAdapter({
       allowUnverifiedWebhooks: true,
       botToken: "token",
@@ -7650,7 +7650,7 @@ describe("Telegram Business mode", () => {
     expect(telegramMethods()).toEqual(["getMe"]);
   });
 
-  it("keeps business threads as their own channel", async () => {
+  it("keeps business threads as their own channel", () => {
     const adapter = createTelegramAdapter({
       botToken: "token",
       mode: "webhook",
@@ -8123,7 +8123,7 @@ describe("Telegram Business mode", () => {
     expect(thread.metadata.businessConnectionId).toBe("conn-abc");
   });
 
-  it("sends an explicit allowed_updates list for polling in business mode", async () => {
+  it("sends an explicit allowed_updates list for polling in business mode", () => {
     class PollingTestAdapter extends TelegramAdapter {
       resolvePolling(
         override?: Parameters<TelegramAdapter["startPolling"]>[0]
@@ -8151,7 +8151,7 @@ describe("Telegram Business mode", () => {
     ]);
   });
 
-  it("merges business update types into custom polling allowedUpdates", async () => {
+  it("merges business update types into custom polling allowedUpdates", () => {
     class PollingTestAdapter extends TelegramAdapter {
       resolvePolling(
         override?: Parameters<TelegramAdapter["startPolling"]>[0]
@@ -8311,7 +8311,7 @@ describe("longMessages: split", { timeout: 20_000 }, () => {
     });
   }
 
-  it("rejects an unknown strategy", async () => {
+  it("rejects an unknown strategy", () => {
     expect(() =>
       createTelegramAdapter({
         botToken: "token",
