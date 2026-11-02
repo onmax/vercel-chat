@@ -996,8 +996,8 @@ importers:
         specifier: 4.1.0-beta.2
         version: 4.1.0-beta.2
       comark:
-        specifier: ^0.8.1
-        version: 0.8.1
+        specifier: https://pkg.pr.new/comark@10d5415
+        version: https://pkg.pr.new/comark@10d5415
     devDependencies:
       '@tanstack/ai':
         specifier: 0.54.0
@@ -7799,9 +7799,6 @@ packages:
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
-  argparse@3.0.4:
-    resolution: {integrity: sha512-fwWK3Zq22l4XJJjx5mcBHGikIk+hJqO+32dPm0Jur7+rtG5x1scOjSfdT9ZKeWHPpsya/l0HHK4tDImBkTrtvA==}
-
   aria-hidden@1.2.6:
     resolution: {integrity: sha512-ik3ZgC9dY/lYVVM++OISsaYDeg1tb0VtP5uL3ouh1koGOaUMDPpbFIei4JkFimWUFPn90sbMNMXQAIVOlnYKJA==}
     engines: {node: '>=10'}
@@ -8210,13 +8207,14 @@ packages:
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
-  comark@0.8.1:
-    resolution: {integrity: sha512-oz2Nrt3o/e5SRYVgd3PlBwDUp5P4PWYZbVggORI02rLF63WEjHYkPJkxZh2Hwfpl0J4jDLspe6aeUraNplAsAw==}
+  comark@https://pkg.pr.new/comark@10d5415:
+    resolution: {tarball: https://pkg.pr.new/comark@10d5415}
+    version: 0.8.1
     peerDependencies:
       beautiful-mermaid: ^1.1.3
-      katex: ^0.18.7
+      katex: ^0.19.1
       rangi: ^2.2.0
-      shiki: ^4.4.3
+      shiki: ^4.5.0
     peerDependenciesMeta:
       beautiful-mermaid:
         optional: true
@@ -9889,10 +9887,6 @@ packages:
 
   js-yaml@4.1.1:
     resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
-    hasBin: true
-
-  js-yaml@5.5.0:
-    resolution: {integrity: sha512-paNr4LFIFPjeeSmwNYdrb8FafLLG/Cr2Af3GjbsHJ5CxIjH4r0c2emlmRdAtpPAieP1gRVzk6buBbVP5gBMGAg==}
     hasBin: true
 
   jsesc@3.1.0:
@@ -12433,6 +12427,22 @@ packages:
 
   tiny-invariant@1.3.3:
     resolution: {integrity: sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==}
+
+  tinyaml@0.1.0:
+    resolution: {integrity: sha512-rSx4dnwW2KndEc8V7hKNo4UE6o2RieOmSkYU+9aWd5/08Jv9jrAUitX95xrFQ4bGd9G2VawJ65jRCJ9fuy8ViA==}
+    engines: {node: '>=22.12.0'}
+    hasBin: true
+    peerDependencies:
+      eslint: '>=9.15.0'
+      vite-doctor: '>=0.1.1'
+      yaml-eslint-parser: '>=2.0.0'
+    peerDependenciesMeta:
+      eslint:
+        optional: true
+      vite-doctor:
+        optional: true
+      yaml-eslint-parser:
+        optional: true
 
   tinybench@6.2.1:
     resolution: {integrity: sha512-IAbQaPJIIdhVxi0mqy9lez1wEwje0UQf9F1vwtbelEG5Nbgn0nPOxCvU+mNeNS9gyJTAhrHp74CbUaSynQpZcQ==}
@@ -20645,8 +20655,6 @@ snapshots:
 
   argparse@2.0.1: {}
 
-  argparse@3.0.4: {}
-
   aria-hidden@1.2.6:
     dependencies:
       tslib: 2.8.1
@@ -21076,11 +21084,15 @@ snapshots:
 
   color-name@1.1.4: {}
 
-  comark@0.8.1:
+  comark@https://pkg.pr.new/comark@10d5415:
     dependencies:
       entities: 8.1.0
-      js-yaml: 5.5.0
       markdown-exit: 1.3.0
+      tinyaml: 0.1.0
+    transitivePeerDependencies:
+      - eslint
+      - vite-doctor
+      - yaml-eslint-parser
 
   combined-stream@1.0.8:
     dependencies:
@@ -22987,10 +22999,6 @@ snapshots:
   js-yaml@4.1.1:
     dependencies:
       argparse: 2.0.1
-
-  js-yaml@5.5.0:
-    dependencies:
-      argparse: 3.0.4
 
   jsesc@3.1.0: {}
 
@@ -26366,6 +26374,8 @@ snapshots:
       convert-hrtime: 5.0.0
 
   tiny-invariant@1.3.3: {}
+
+  tinyaml@0.1.0: {}
 
   tinybench@6.2.1: {}
 
