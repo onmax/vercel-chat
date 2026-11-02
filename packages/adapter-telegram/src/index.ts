@@ -1197,7 +1197,10 @@ export class TelegramAdapter
 
     this.startTypingForPrivateMessage(telegramMessage, threadId, options);
 
-    const parsedMessage = this.parseTelegramMessage(telegramMessage, threadId);
+    const parsedMessage = await this.parseTelegramMessage(
+      telegramMessage,
+      threadId
+    );
     this.cacheMessage(parsedMessage);
 
     await this.chat.processMessage(this, threadId, parsedMessage, options);
@@ -1235,10 +1238,19 @@ export class TelegramAdapter
 
     this.startTypingForPrivateMessage(telegramMessage, threadId, options);
 
-    const parsedMessage = this.parseTelegramMessage(telegramMessage, threadId);
-    this.cacheMessage(parsedMessage);
-
-    return this.chat.processMessage(this, threadId, parsedMessage, options);
+    const task = this.parseTelegramMessage(telegramMessage, threadId).then(
+      (parsedMessage) => {
+        this.cacheMessage(parsedMessage);
+        return this.chat?.processMessage(
+          this,
+          threadId,
+          parsedMessage,
+          options
+        );
+      }
+    );
+    options?.waitUntil?.(task.catch(() => undefined));
+    return task;
   }
 
   protected async processIncomingMediaGroup(
@@ -1310,8 +1322,10 @@ export class TelegramAdapter
       const orderedMessages = entries
         .map((entry) => entry.message)
         .sort((left, right) => left.message_id - right.message_id);
-      const parsedMessages = orderedMessages.map((message) =>
-        this.parseTelegramMessage(message, threadId)
+      const parsedMessages = await Promise.all(
+        orderedMessages.map((message) =>
+          this.parseTelegramMessage(message, threadId)
+        )
       );
       const latestMessage = parsedMessages.at(-1);
       if (!latestMessage) {
@@ -1358,22 +1372,24 @@ export class TelegramAdapter
 
     this.startTypingForPrivateMessage(telegramMessage, threadId, options);
 
-    const parsedMessage = this.parseTelegramMessage(telegramMessage, threadId);
-    this.cacheMessage(parsedMessage);
-
-    return Promise.resolve(
-      this.chat.processSlashCommand(
-        {
-          adapter: this,
-          channelId: threadId,
-          command: slashCommand.command,
-          text: slashCommand.text,
-          user: parsedMessage.author,
-          raw: telegramMessage,
-        },
-        options
-      )
+    const task = this.parseTelegramMessage(telegramMessage, threadId).then(
+      (parsedMessage) => {
+        this.cacheMessage(parsedMessage);
+        return this.chat?.processSlashCommand(
+          {
+            adapter: this,
+            channelId: threadId,
+            command: slashCommand.command,
+            text: slashCommand.text,
+            user: parsedMessage.author,
+            raw: telegramMessage,
+          },
+          options
+        );
+      }
     );
+    options?.waitUntil?.(task.catch(() => undefined));
+    return task;
   }
 
   protected startTypingForPrivateMessage(
@@ -1587,7 +1603,10 @@ export class TelegramAdapter
       retryWaitMs: 0,
     };
     try {
-      const parts = this.splitLongMessage(message, this.richMessagesAvailable);
+      const parts = await this.splitLongMessage(
+        message,
+        this.richMessagesAvailable
+      );
       if (!parts) {
         return await this.sendPostable(
           threadId,
@@ -1644,7 +1663,7 @@ export class TelegramAdapter
     const card = extractCard(message);
     const replyMarkup = card ? cardToTelegramInlineKeyboard(card) : undefined;
     const parseMode = this.resolveParseMode(message, card);
-    const bodies = this.renderUntruncatedBodies(message, card);
+    const bodies = await this.renderUntruncatedBodies(message, card);
     const { text, plainText } = this.truncateMessageBodies(bodies, parseMode);
 
     const files = extractFiles(message);
@@ -1657,7 +1676,7 @@ export class TelegramAdapter
       );
     }
 
-    const rich = this.resolveRichMessage(
+    const rich = await this.resolveRichMessage(
       message,
       card,
       files.length,
@@ -1740,7 +1759,7 @@ export class TelegramAdapter
         // it is split again instead of truncated.
         const parts =
           splitState && !this.fitsRegularMessage(bodies)
-            ? this.splitLongMessage(message, false)
+            ? await this.splitLongMessage(message, false)
             : null;
         if (!parts) {
           return [
@@ -1761,7 +1780,7 @@ export class TelegramAdapter
         const sent: TelegramMessage[] = [];
         for (const [index, part] of parts.entries()) {
           const partParseMode = this.resolveParseMode(part, null);
-          const partBodies = this.renderMessageBodies(
+          const partBodies = await this.renderMessageBodies(
             part,
             null,
             partParseMode
@@ -1804,22 +1823,24 @@ export class TelegramAdapter
         : await sendRegular();
     }
 
-    const parsedMessages = rawMessages.map((rawMessage) =>
-      this.parseTelegramMessage(
-        rawMessage,
-        this.encodeThreadId({
-          chatId: String(rawMessage.chat.id),
-          messageThreadId:
-            rawMessage.message_thread_id ?? parsedThread.messageThreadId,
-          businessConnectionId: parsedThread.businessConnectionId,
-        }),
-        // The whole message's content only describes a single sent message.
-        rich && rawMessages.length === 1
-          ? {
-              formatted: rich.formatted,
-              text: rich.text,
-            }
-          : undefined
+    const parsedMessages = await Promise.all(
+      rawMessages.map((rawMessage) =>
+        this.parseTelegramMessage(
+          rawMessage,
+          this.encodeThreadId({
+            chatId: String(rawMessage.chat.id),
+            messageThreadId:
+              rawMessage.message_thread_id ?? parsedThread.messageThreadId,
+            businessConnectionId: parsedThread.businessConnectionId,
+          }),
+          // The whole message's content only describes a single sent message.
+          rich && rawMessages.length === 1
+            ? {
+                formatted: rich.formatted,
+                text: rich.text,
+              }
+            : undefined
+        )
       )
     );
 
@@ -1945,12 +1966,12 @@ export class TelegramAdapter
     const card = extractCard(message);
     const replyMarkup = card ? cardToTelegramInlineKeyboard(card) : undefined;
     const parseMode = this.resolveParseMode(message, card);
-    const { text, plainText } = this.renderMessageBodies(
+    const { text, plainText } = await this.renderMessageBodies(
       message,
       card,
       parseMode
     );
-    const rich = this.resolveRichMessage(message, card, 0, 0);
+    const rich = await this.resolveRichMessage(message, card, 0, 0);
 
     if (!text.trim()) {
       throw new ValidationError("telegram", "Message text cannot be empty");
@@ -2008,7 +2029,7 @@ export class TelegramAdapter
       const updated = new Message<TelegramRawMessage>({
         ...existing,
         text: rich?.text ?? text,
-        formatted: rich?.formatted ?? this.formatConverter.toAst(text),
+        formatted: rich?.formatted ?? (await this.formatConverter.toAst(text)),
         metadata: {
           ...existing.metadata,
           edited: true,
@@ -2031,7 +2052,7 @@ export class TelegramAdapter
       businessConnectionId: parsedThread.businessConnectionId,
     });
 
-    const parsedMessage = this.parseTelegramMessage(
+    const parsedMessage = await this.parseTelegramMessage(
       result,
       resultingThreadId,
       rich
@@ -2348,22 +2369,22 @@ export class TelegramAdapter
     let streamUsesMarkdown = true;
     let streamUsesRich = this.richMessagesAvailable;
 
-    const renderMarkdownForTelegram = (text: string): string =>
+    const renderMarkdownForTelegram = async (text: string): Promise<string> =>
       convertEmojiPlaceholders(
-        this.formatConverter.fromMarkdown(text),
+        await this.formatConverter.fromMarkdown(text),
         "gchat"
       );
 
-    const renderMarkdownText = (text: string): string =>
+    const renderMarkdownText = async (text: string): Promise<string> =>
       truncateForTelegram(
-        renderMarkdownForTelegram(text),
+        await renderMarkdownForTelegram(text),
         TELEGRAM_MESSAGE_LIMIT,
         "MarkdownV2"
       );
 
-    const renderPlainText = (text: string): string =>
+    const renderPlainText = async (text: string): Promise<string> =>
       truncateForTelegram(
-        this.resolveTelegramFallbackText(text, markdownToPlainText(text)),
+        this.resolveTelegramFallbackText(text, await markdownToPlainText(text)),
         TELEGRAM_MESSAGE_LIMIT,
         "plain"
       );
@@ -2409,8 +2430,8 @@ export class TelegramAdapter
           );
           streamUsesRich = false;
           draftText = useMarkdown
-            ? renderMarkdownText(renderer.render())
-            : renderPlainText(accumulated);
+            ? await renderMarkdownText(renderer.render())
+            : await renderPlainText(accumulated);
         }
       }
 
@@ -2435,7 +2456,7 @@ export class TelegramAdapter
         if (useMarkdown && this.isTelegramMarkdownParseError(error)) {
           streamUsesMarkdown = false;
 
-          const plainDraftText = renderPlainText(accumulated);
+          const plainDraftText = await renderPlainText(accumulated);
 
           try {
             await this.telegramFetch<boolean>("sendMessageDraft", {
@@ -2472,9 +2493,9 @@ export class TelegramAdapter
       if (streamUsesRich) {
         draftText = truncateRichMarkdown(renderer.render());
       } else if (streamUsesMarkdown) {
-        draftText = renderMarkdownText(renderer.render());
+        draftText = await renderMarkdownText(renderer.render());
       } else {
-        draftText = renderPlainText(accumulated);
+        draftText = await renderPlainText(accumulated);
       }
       await sendDraft(draftText, streamUsesMarkdown);
     };
@@ -2527,11 +2548,15 @@ export class TelegramAdapter
             raw.message_thread_id ?? parsedThread.messageThreadId,
           businessConnectionId: parsedThread.businessConnectionId,
         });
-        const formatted = this.formatConverter.toAst(accumulated);
-        const message = this.parseTelegramMessage(raw, resultingThreadId, {
-          formatted,
-          text: toPlainText(formatted),
-        });
+        const formatted = await this.formatConverter.toAst(accumulated);
+        const message = await this.parseTelegramMessage(
+          raw,
+          resultingThreadId,
+          {
+            formatted,
+            text: toPlainText(formatted),
+          }
+        );
         this.cacheMessage(message);
         return {
           id: message.id,
@@ -2547,9 +2572,9 @@ export class TelegramAdapter
     }
 
     const regularText = streamUsesMarkdown
-      ? renderMarkdownText(finalMarkdown)
-      : renderPlainText(accumulated);
-    const plainText = renderPlainText(accumulated);
+      ? await renderMarkdownText(finalMarkdown)
+      : await renderPlainText(accumulated);
+    const plainText = await renderPlainText(accumulated);
     const raw = await this.sendRegularMessage(
       parsedThread,
       regularText,
@@ -2563,7 +2588,7 @@ export class TelegramAdapter
       messageThreadId: raw.message_thread_id ?? parsedThread.messageThreadId,
       businessConnectionId: parsedThread.businessConnectionId,
     });
-    const message = this.parseTelegramMessage(raw, resultingThreadId);
+    const message = await this.parseTelegramMessage(raw, resultingThreadId);
     this.cacheMessage(message);
     return {
       id: message.id,
@@ -2802,13 +2827,15 @@ export class TelegramAdapter
     };
   }
 
-  parseMessage(raw: TelegramRawMessage): Message<TelegramRawMessage> {
+  async parseMessage(
+    raw: TelegramRawMessage
+  ): Promise<Message<TelegramRawMessage>> {
     const threadId = this.encodeThreadId({
       chatId: String(raw.chat.id),
       messageThreadId: raw.message_thread_id,
     });
 
-    const message = this.parseTelegramMessage(raw, threadId);
+    const message = await this.parseTelegramMessage(raw, threadId);
     this.cacheMessage(message);
     return message;
   }
@@ -2817,14 +2844,14 @@ export class TelegramAdapter
     return this.formatConverter.fromAst(content);
   }
 
-  protected parseTelegramMessage(
+  protected async parseTelegramMessage(
     raw: TelegramMessage,
     threadId: string,
     content?: {
       formatted: FormattedContent;
       text: string;
     }
-  ): Message<TelegramRawMessage> {
+  ): Promise<Message<TelegramRawMessage>> {
     const richMarkdown = raw.rich_message
       ? richMessageToMarkdown(raw.rich_message)
       : "";
@@ -2873,7 +2900,8 @@ export class TelegramAdapter
       text,
       formatted:
         content?.formatted ??
-        this.formatConverter.parseIncoming(richMarkdown || text).formatted,
+        (await this.formatConverter.parseIncoming(richMarkdown || text))
+          .formatted,
       raw,
       author,
       metadata: {
@@ -2886,7 +2914,7 @@ export class TelegramAdapter
       },
       attachments: this.extractAttachments(raw),
       replyTo: raw.reply_to_message
-        ? this.parseTelegramMessage(raw.reply_to_message, threadId)
+        ? await this.parseTelegramMessage(raw.reply_to_message, threadId)
         : undefined,
       isMention: this.isBotMentioned(raw, plainText),
     });
@@ -3915,16 +3943,16 @@ export class TelegramAdapter
     return "MarkdownV2";
   }
 
-  protected resolveRichMessage(
+  protected async resolveRichMessage(
     message: AdapterPostableMessage,
     card: ReturnType<typeof extractCard>,
     fileCount: number,
     attachmentCount: number
-  ): {
+  ): Promise<{
     formatted: FormattedContent;
     markdown: string;
     text: string;
-  } | null {
+  } | null> {
     if (
       !this.richMessagesAvailable ||
       card ||
@@ -3937,10 +3965,10 @@ export class TelegramAdapter
     }
 
     if ("markdown" in message) {
-      const formatted = this.formatConverter.toAst(message.markdown);
+      const formatted = await this.formatConverter.toAst(message.markdown);
       return {
         formatted,
-        markdown: truncateRichMarkdown(this.renderRichMarkdown(message)),
+        markdown: truncateRichMarkdown(await this.renderRichMarkdown(message)),
         text: toPlainText(formatted),
       };
     }
@@ -3948,7 +3976,7 @@ export class TelegramAdapter
     if ("ast" in message) {
       return {
         formatted: message.ast,
-        markdown: truncateRichMarkdown(this.renderRichMarkdown(message)),
+        markdown: truncateRichMarkdown(await this.renderRichMarkdown(message)),
         text: toPlainText(message.ast),
       };
     }
@@ -3960,19 +3988,21 @@ export class TelegramAdapter
    * Render the untruncated rich-message markdown for a `{ markdown }` or
    * `{ ast }` message, with emoji placeholders resolved.
    */
-  protected renderRichMarkdown(
+  protected async renderRichMarkdown(
     message: { markdown: string } | { ast: Root }
-  ): string {
+  ): Promise<string> {
     return convertEmojiPlaceholders(
-      "markdown" in message ? message.markdown : stringifyMarkdown(message.ast),
+      "markdown" in message
+        ? message.markdown
+        : await stringifyMarkdown(message.ast),
       "gchat"
     );
   }
 
-  protected renderPlainTextMessage(
+  protected async renderPlainTextMessage(
     message: AdapterPostableMessage,
     card: ReturnType<typeof extractCard>
-  ): string {
+  ): Promise<string> {
     if (card) {
       return cardToFallbackText(card);
     }
@@ -3985,7 +4015,7 @@ export class TelegramAdapter
     if ("markdown" in message) {
       return this.resolveTelegramFallbackText(
         message.markdown,
-        markdownToPlainText(message.markdown)
+        await markdownToPlainText(message.markdown)
       );
     }
     if ("ast" in message) {
@@ -3998,13 +4028,13 @@ export class TelegramAdapter
    * Render the regular-message body and its plain-text fallback, both with
    * emoji placeholders resolved and truncated to Telegram's message limit.
    */
-  protected renderMessageBodies(
+  protected async renderMessageBodies(
     message: AdapterPostableMessage,
     card: ReturnType<typeof extractCard>,
     parseMode: TelegramParseMode
-  ): TelegramMessageBodies {
+  ): Promise<TelegramMessageBodies> {
     return this.truncateMessageBodies(
-      this.renderUntruncatedBodies(message, card),
+      await this.renderUntruncatedBodies(message, card),
       parseMode
     );
   }
@@ -4023,21 +4053,21 @@ export class TelegramAdapter
     };
   }
 
-  protected renderUntruncatedBodies(
+  protected async renderUntruncatedBodies(
     message: AdapterPostableMessage,
     card: ReturnType<typeof extractCard>
-  ): TelegramMessageBodies {
+  ): Promise<TelegramMessageBodies> {
     return {
       plainText: convertEmojiPlaceholders(
-        this.renderPlainTextMessage(message, card),
+        await this.renderPlainTextMessage(message, card),
         "gchat"
       ),
       text: convertEmojiPlaceholders(
         card
-          ? this.formatConverter.fromMarkdown(
+          ? await this.formatConverter.fromMarkdown(
               cardToFallbackText(card, { boldFormat: "**" })
             )
-          : this.formatConverter.renderPostable(message),
+          : await this.formatConverter.renderPostable(message),
         "gchat"
       ),
     };
@@ -4065,10 +4095,10 @@ export class TelegramAdapter
    * but fits once re-rendered from its AST comes back as a single `{ ast }`
    * part, so it is sent whole instead of truncated.
    */
-  protected splitLongMessage(
+  protected async splitLongMessage(
     message: AdapterPostableMessage,
     richLimit: boolean
-  ): AdapterPostableMessage[] | null {
+  ): Promise<AdapterPostableMessage[] | null> {
     if (
       extractCard(message) ||
       extractFiles(message).length > 0 ||
@@ -4088,9 +4118,11 @@ export class TelegramAdapter
         return null;
       }
       // A break can leave a whitespace-only part, which Telegram rejects.
-      const parts = splitText(
-        source,
-        (value) => value.length <= TELEGRAM_MESSAGE_LIMIT
+      const parts = (
+        await splitText(
+          source,
+          (value) => value.length <= TELEGRAM_MESSAGE_LIMIT
+        )
       ).filter((part) => part.trim().length > 0);
       if (parts.length === 0) {
         return null;
@@ -4105,8 +4137,10 @@ export class TelegramAdapter
     }
 
     const fitsAsSent = richLimit
-      ? fitsRichMessage(this.renderRichMarkdown(message))
-      : this.fitsRegularMessage(this.renderUntruncatedBodies(message, null));
+      ? fitsRichMessage(await this.renderRichMarkdown(message))
+      : this.fitsRegularMessage(
+          await this.renderUntruncatedBodies(message, null)
+        );
     if (fitsAsSent) {
       return null;
     }
@@ -4116,19 +4150,20 @@ export class TelegramAdapter
     // placeholder such as `{{emoji:thumbs_up}}`, so it would no longer match.
     const ast =
       "markdown" in message
-        ? this.formatConverter.toAst(
+        ? await this.formatConverter.toAst(
             convertEmojiPlaceholders(message.markdown, "gchat")
           )
         : message.ast;
 
     const fits = richLimit
-      ? (root: Root) => fitsRichMessage(this.renderRichMarkdown({ ast: root }))
-      : (root: Root) =>
+      ? async (root: Root) =>
+          fitsRichMessage(await this.renderRichMarkdown({ ast: root }))
+      : async (root: Root) =>
           this.fitsRegularMessage(
-            this.renderUntruncatedBodies({ ast: root }, null)
+            await this.renderUntruncatedBodies({ ast: root }, null)
           );
 
-    const parts = splitMarkdownAst(ast, fits).filter(
+    const parts = (await splitMarkdownAst(ast, fits)).filter(
       (part) => this.formatConverter.fromAst(part).trim().length > 0
     );
     // A regular message that still fits in one part only failed the check

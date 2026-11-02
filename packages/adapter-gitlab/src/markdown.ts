@@ -19,28 +19,28 @@ import {
 
 export class GitLabFormatConverter extends BaseFormatConverter {
   /**
-   * GLFM accepts standard GFM, so we can use remark-stringify directly.
+   * GLFM accepts standard GFM, so we can stringify the AST directly.
    */
-  fromAst(ast: Root): string {
-    // Use standard markdown stringification
-    // remark-stringify handles GFM well
-    return stringifyMarkdown(ast).trim();
+  async fromAst(ast: Root): Promise<string> {
+    return (await stringifyMarkdown(ast)).trim();
   }
 
   /**
    * Parse GitLab markdown into an AST.
    * GLFM is a superset of GFM, so we use the standard parser.
    */
-  toAst(markdown: string): Root {
+  toAst(markdown: string): Promise<Root> {
     return parseMarkdown(markdown);
   }
 
   /**
-   * Strings and markdown are posted as written. Round-tripping markdown through
-   * remark-stringify would escape GitLab reference syntax (`~label` becomes
-   * `\~label`), which stops GitLab from linking it.
+   * Strings and markdown are posted as written. Round-tripping markdown would
+   * escape GitLab reference syntax (`~label` becomes `\~label`), which stops
+   * GitLab from linking it.
    */
-  override renderPostable(message: AdapterPostableMessage): string {
+  override async renderPostable(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

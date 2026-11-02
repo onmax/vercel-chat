@@ -72,8 +72,10 @@ export function decodeInstagramCallbackData(data?: string): {
   return { actionId: data, value: data };
 }
 
-export function cardToInstagram(card: CardElement): InstagramCardResult {
-  const text = cardToInstagramText(card);
+export async function cardToInstagram(
+  card: CardElement
+): Promise<InstagramCardResult> {
+  const text = await cardToInstagramText(card);
   const actions = findActions(card.children);
 
   if (actions) {
@@ -128,25 +130,25 @@ export function cardToInstagram(card: CardElement): InstagramCardResult {
   return { type: "text", text };
 }
 
-export function cardToInstagramText(card: CardElement): string {
+export async function cardToInstagramText(card: CardElement): Promise<string> {
   const parts: string[] = [];
   if (card.title) {
-    parts.push(markdownToPlainText(card.title));
+    parts.push(await markdownToPlainText(card.title));
   }
   if (card.subtitle) {
-    parts.push(markdownToPlainText(card.subtitle));
+    parts.push(await markdownToPlainText(card.subtitle));
   }
   for (const child of card.children) {
     const text = cardChildToFallbackText(child);
     if (text) {
-      parts.push(markdownToPlainText(text));
+      parts.push(await markdownToPlainText(text));
     }
   }
   return parts.join("\n");
 }
 
-function markdownToPlainText(text: string): string {
-  return toPlainText(parseMarkdown(text)).trim();
+async function markdownToPlainText(text: string): Promise<string> {
+  return toPlainText(await parseMarkdown(text)).trim();
 }
 
 function findActions(children: CardChild[]): ActionsElement | null {

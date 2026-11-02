@@ -152,7 +152,7 @@ export class GmailAdapter implements Adapter<GmailThreadId, GmailRawMessage> {
       this.labelId,
       chat.getState(),
       async (email) => {
-        const message = this.parseMessage(email);
+        const message = await this.parseMessage(email);
         message.isMention = true;
         await this.context.run(email, () =>
           chat.processMessage(this, message.threadId, message)
@@ -253,7 +253,7 @@ export class GmailAdapter implements Adapter<GmailThreadId, GmailRawMessage> {
     });
   }
 
-  parseMessage(raw: GmailRawMessage): Message<GmailRawMessage> {
+  async parseMessage(raw: GmailRawMessage): Promise<Message<GmailRawMessage>> {
     const sender = raw.email.from;
     const address = sender?.address ?? "unknown";
     return new Message({
@@ -263,7 +263,7 @@ export class GmailAdapter implements Adapter<GmailThreadId, GmailRawMessage> {
         threadId: raw.message.threadId,
       }),
       text: raw.text,
-      formatted: this.formatter.toAst(raw.text),
+      formatted: await this.formatter.toAst(raw.text),
       raw,
       author: {
         userId: address,
@@ -419,7 +419,7 @@ export class GmailAdapter implements Adapter<GmailThreadId, GmailRawMessage> {
     };
   }
 
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatter.fromAst(content);
   }
 
@@ -580,7 +580,7 @@ export class GmailAdapter implements Adapter<GmailThreadId, GmailRawMessage> {
     const content = composeGmailMessage({
       from: this.userName,
       ...target,
-      text: `${target.private ? "(private only)\n\n" : ""}${this.formatter.renderPostable(message)}`,
+      text: `${target.private ? "(private only)\n\n" : ""}${await this.formatter.renderPostable(message)}`,
       attachments,
     });
     const raw = await parseGmailMessage({

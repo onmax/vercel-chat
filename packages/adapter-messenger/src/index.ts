@@ -160,11 +160,11 @@ export class MessengerAdapter
     for (const entry of payload.entry) {
       for (const event of entry.messaging) {
         if (event.message && !event.message.is_echo) {
-          this.handleIncomingMessage(event, options);
+          await this.handleIncomingMessage(event, options);
         }
 
         if (event.message?.is_echo) {
-          this.handleEcho(event);
+          await this.handleEcho(event);
         }
 
         if (event.postback) {
@@ -234,10 +234,10 @@ export class MessengerAdapter
     }
   }
 
-  protected handleIncomingMessage(
+  protected async handleIncomingMessage(
     event: MessengerMessagingEvent,
     options?: WebhookOptions
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       return;
     }
@@ -246,7 +246,7 @@ export class MessengerAdapter
       recipientId: event.sender.id,
     });
 
-    const parsedMessage = this.parseMessengerMessage(event, threadId);
+    const parsedMessage = await this.parseMessengerMessage(event, threadId);
     this.cacheMessage(parsedMessage);
 
     this.chat.processMessage(this, threadId, parsedMessage, options);
@@ -289,7 +289,7 @@ export class MessengerAdapter
     );
   }
 
-  protected handleEcho(event: MessengerMessagingEvent): void {
+  protected async handleEcho(event: MessengerMessagingEvent): Promise<void> {
     if (!event.message) {
       return;
     }
@@ -298,7 +298,7 @@ export class MessengerAdapter
       recipientId: event.recipient.id,
     });
 
-    const parsedMessage = this.parseMessengerMessage(event, threadId);
+    const parsedMessage = await this.parseMessengerMessage(event, threadId);
     this.cacheMessage(parsedMessage);
   }
 
@@ -365,7 +365,7 @@ export class MessengerAdapter
 
     // Regular text message
     const text = convertEmojiPlaceholders(
-      this.formatConverter.renderPostable(message),
+      await this.formatConverter.renderPostable(message),
       "messenger"
     );
     return this.sendTextMessage(threadId, text);
@@ -406,7 +406,10 @@ export class MessengerAdapter
       },
     };
 
-    const parsedMessage = this.parseMessengerMessage(rawMessage, threadId);
+    const parsedMessage = await this.parseMessengerMessage(
+      rawMessage,
+      threadId
+    );
     this.cacheMessage(parsedMessage);
 
     return {
@@ -450,7 +453,10 @@ export class MessengerAdapter
       },
     };
 
-    const parsedMessage = this.parseMessengerMessage(rawMessage, threadId);
+    const parsedMessage = await this.parseMessengerMessage(
+      rawMessage,
+      threadId
+    );
     this.cacheMessage(parsedMessage);
 
     return {
@@ -622,24 +628,26 @@ export class MessengerAdapter
     return { recipientId };
   }
 
-  parseMessage(raw: MessengerRawMessage): Message<MessengerRawMessage> {
+  async parseMessage(
+    raw: MessengerRawMessage
+  ): Promise<Message<MessengerRawMessage>> {
     const threadId = this.encodeThreadId({
       recipientId: raw.sender.id,
     });
 
-    const message = this.parseMessengerMessage(raw, threadId);
+    const message = await this.parseMessengerMessage(raw, threadId);
     this.cacheMessage(message);
     return message;
   }
 
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 
-  protected parseMessengerMessage(
+  protected async parseMessengerMessage(
     event: MessengerMessagingEvent,
     threadId: string
-  ): Message<MessengerRawMessage> {
+  ): Promise<Message<MessengerRawMessage>> {
     const text = event.message?.text ?? event.postback?.title ?? "";
     const isEcho = event.message?.is_echo ?? false;
     const isMe = isEcho || event.sender.id === this._botUserId;
@@ -648,7 +656,7 @@ export class MessengerAdapter
       id: event.message?.mid ?? `event:${event.timestamp}`,
       threadId,
       text,
-      formatted: this.formatConverter.parseIncoming(text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(text)).formatted,
       raw: event,
       author: {
         userId: event.sender.id,

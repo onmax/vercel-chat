@@ -27,6 +27,7 @@ import type {
   ChannelInfo,
   ChannelVisibility,
   ChatInstance,
+  Content,
   EmojiValue,
   EphemeralMessage,
   FetchOptions,
@@ -37,6 +38,7 @@ import type {
   ListThreadsOptions,
   ListThreadsResult,
   Logger,
+  MdastTable,
   ModalElement,
   ModalResponse,
   OptionsLoadGroup,
@@ -50,6 +52,7 @@ import type {
   SelectOptionElement,
   StreamChunk,
   StreamOptions,
+  TableRow,
   TaskUpdateChunk,
   ThreadInfo,
   ThreadSummary,
@@ -61,9 +64,14 @@ import type {
 import {
   ConsoleLogger,
   defaultEmojiResolver,
+  getNodeChildren,
   isJSX,
+  isParagraphNode,
+  link,
   Message,
+  paragraph,
   parseMarkdown,
+  root,
   StreamingMarkdownRenderer,
   toModalElement,
   toPlainText,
@@ -538,12 +546,6 @@ export interface SlackThreadId {
   threadTs: string;
 }
 
-type SlackContentNode = FormattedContent["children"][number];
-type SlackTable = Extract<SlackContentNode, { type: "table" }>;
-type SlackTableRow = SlackTable["children"][number];
-type SlackTableCell = SlackTableRow["children"][number];
-type SlackPhrasing = SlackTableCell["children"][number];
-
 interface SlackEventTables {
   /** Tables that appear before any other block, rendered above the text. */
   leading: SlackTableData[];
@@ -738,12 +740,12 @@ function mentionIds(
  * Render plain-text Slack content to paragraphs. Lines share a paragraph,
  * separated by hard breaks, and a blank line starts a new paragraph.
  */
-function literalParagraphs(literal: string): SlackContentNode[] {
-  const paragraphs: SlackContentNode[] = [];
-  let children: SlackPhrasing[] = [];
+function literalParagraphs(literal: string): Content[] {
+  const paragraphs: Content[] = [];
+  let children: Content[] = [];
   const flush = () => {
     if (children.length > 0) {
-      paragraphs.push({ type: "paragraph", children });
+      paragraphs.push(paragraph(children));
       children = [];
     }
   };
@@ -754,7 +756,7 @@ function literalParagraphs(literal: string): SlackContentNode[] {
       continue;
     }
     if (children.length > 0) {
-      children.push({ type: "break" });
+      children.push(["br", {}]);
     }
     children.push(...literalPhrasing(line));
   }
@@ -768,12 +770,12 @@ function literalParagraphs(literal: string): SlackContentNode[] {
  * (`<@U…|name>` → `@name`, `<url|label>` → link), but nothing is parsed as
  * markdown — formatting characters stay literal.
  */
-function literalPhrasing(line: string): SlackPhrasing[] {
-  const children: SlackPhrasing[] = [];
+function literalPhrasing(line: string): Content[] {
+  const children: Content[] = [];
   let plain = "";
   const flushPlain = () => {
     if (plain) {
-      children.push({ type: "text", value: unescapeSlackText(plain) });
+      children.push(unescapeSlackText(plain));
       plain = "";
     }
   };
@@ -801,13 +803,7 @@ function literalPhrasing(line: string): SlackPhrasing[] {
       plain += label ? `#${label} (${id})` : `#${id}`;
     } else if (HTTP_URL_PREFIX_PATTERN.test(target)) {
       flushPlain();
-      children.push({
-        type: "link",
-        url: target,
-        children: [
-          { type: "text", value: label ? unescapeSlackText(label) : target },
-        ],
-      });
+      children.push(link(target, [label ? unescapeSlackText(label) : target]));
     } else {
       plain += token;
     }
@@ -3440,7 +3436,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
                 threadId,
               }
             );
-            return this.parseSlackMessageSync(snapshot, threadId);
+            return this.parseSlackMessageWithoutLookup(snapshot, threadId);
           }
         }
       : undefined;
@@ -3484,20 +3480,25 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     });
     const deletedAt = this.parseSlackTimestamp(event.event_ts ?? event.ts);
 
-    this.chat.processMessageDeleted(
-      {
-        adapter: this,
-        channelId: event.channel,
-        deletedAt,
-        messageId: deletedTs,
-        previousMessage: previous
-          ? this.parseSlackMessageSync(previous, threadId)
-          : undefined,
-        raw: event,
-        threadId,
-      },
-      options
-    );
+    const { chat } = this;
+    const channelId = event.channel;
+    const task = (async () => {
+      chat.processMessageDeleted(
+        {
+          adapter: this,
+          channelId,
+          deletedAt,
+          messageId: deletedTs,
+          previousMessage: previous
+            ? await this.parseSlackMessageWithoutLookup(previous, threadId)
+            : undefined,
+          raw: event,
+          threadId,
+        },
+        options
+      );
+    })();
+    options?.waitUntil?.(task);
   }
 
   /**
@@ -4864,7 +4865,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
         };
       }
 
-      const payload = this.formatConverter.toSlackPayload(message);
+      const payload = await this.formatConverter.toSlackPayload(message);
 
       this.logger.debug("Slack API: chat.postMessage", {
         channel,
@@ -4948,7 +4949,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
         };
       }
 
-      const payload = this.formatConverter.toSlackPayload(message);
+      const payload = await this.formatConverter.toSlackPayload(message);
 
       this.logger.debug("Slack API: chat.postEphemeral", {
         channel,
@@ -5058,7 +5059,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
         };
       }
 
-      const payload = this.formatConverter.toSlackPayload(message);
+      const payload = await this.formatConverter.toSlackPayload(message);
 
       this.logger.debug("Slack API: chat.scheduleMessage", {
         channel,
@@ -5288,7 +5289,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
         };
       }
 
-      const payload = this.formatConverter.toSlackPayload(message);
+      const payload = await this.formatConverter.toSlackPayload(message);
 
       this.logger.debug("Slack API: chat.update", {
         channel,
@@ -5336,7 +5337,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     const plan = data as PlanModel;
     const { channel, threadTs } = this.decodeThreadId(threadId);
     const text = this.renderPlanFallbackText(plan);
-    const blocks = this.planToBlockKit(plan);
+    const blocks = await this.planToBlockKit(plan);
 
     try {
       this.logger.debug("Slack API: chat.postMessage (plan)", {
@@ -5375,7 +5376,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     const plan = data as PlanModel;
     const { channel } = this.decodeThreadId(threadId);
     const text = this.renderPlanFallbackText(plan);
-    const blocks = this.planToBlockKit(plan);
+    const blocks = await this.planToBlockKit(plan);
 
     try {
       this.logger.debug("Slack API: chat.update (plan)", {
@@ -5408,19 +5409,21 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     return lines.join("\n");
   }
 
-  protected planToBlockKit(plan: PlanModel): unknown[] {
-    const tasks = plan.tasks.map((task: PlanModel["tasks"][number]) => {
-      const details = this.planContentToRichText(task.details);
-      const output = this.planContentToRichText(task.output);
-      return {
-        type: "task_card",
-        task_id: task.id,
-        title: task.title,
-        status: task.status,
-        ...(details ? { details } : null),
-        ...(output ? { output } : null),
-      };
-    });
+  protected async planToBlockKit(plan: PlanModel): Promise<unknown[]> {
+    const tasks = await Promise.all(
+      plan.tasks.map(async (task: PlanModel["tasks"][number]) => {
+        const details = await this.planContentToRichText(task.details);
+        const output = await this.planContentToRichText(task.output);
+        return {
+          type: "task_card",
+          task_id: task.id,
+          title: task.title,
+          status: task.status,
+          ...(details ? { details } : null),
+          ...(output ? { output } : null),
+        };
+      })
+    );
     return [
       {
         type: "plan",
@@ -5430,7 +5433,9 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     ];
   }
 
-  protected planContentToPlainText(content: PlanContent | undefined): string {
+  protected async planContentToPlainText(
+    content: PlanContent | undefined
+  ): Promise<string> {
     if (!content) {
       return "";
     }
@@ -5441,7 +5446,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
       return content;
     }
     if ("markdown" in content) {
-      return toPlainText(parseMarkdown(content.markdown));
+      return toPlainText(await parseMarkdown(content.markdown));
     }
     if ("ast" in content) {
       return toPlainText(content.ast);
@@ -5449,9 +5454,9 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     return "";
   }
 
-  protected planContentToRichText(
+  protected async planContentToRichText(
     content: PlanContent | undefined
-  ): { type: "rich_text"; elements: unknown[] } | undefined {
+  ): Promise<{ type: "rich_text"; elements: unknown[] } | undefined> {
     if (!content) {
       return undefined;
     }
@@ -5470,7 +5475,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
         ],
       };
     }
-    const text = this.planContentToPlainText(content);
+    const text = await this.planContentToPlainText(content);
     if (!text) {
       return undefined;
     }
@@ -6719,25 +6724,25 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     };
   }
 
-  parseMessage(raw: SlackEvent): Message<unknown> {
+  parseMessage(raw: SlackEvent): Promise<Message<unknown>> {
     const event = raw;
     const threadTs = event.thread_ts || event.ts || "";
     const threadId = this.encodeThreadId({
       channel: event.channel || "",
       threadTs,
     });
-    // Use synchronous version without user lookup for interface compliance
-    return this.parseSlackMessageSync(event, threadId);
+    // Skip user lookup for interface compliance
+    return this.parseSlackMessageWithoutLookup(event, threadId);
   }
 
   /**
-   * Synchronous message parsing without user lookup.
+   * Message parsing without user lookup.
    * Used for parseMessage interface - falls back to user ID for username.
    */
-  protected parseSlackMessageSync(
+  protected async parseSlackMessageWithoutLookup(
     event: SlackEvent,
     threadId: string
-  ): Message<unknown> {
+  ): Promise<Message<unknown>> {
     const isMe = this.isMessageFromSelf(event);
 
     const text = event.text || "";
@@ -6745,7 +6750,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     // Classify the mention the same way the async path does, so an edit's
     // pre-edit snapshot cannot disagree with the edited message about it.
     const isMention = this.detectSelfMention(event, text, attachments);
-    const formatted = this.content(event, text, attachments);
+    const formatted = await this.content(event, text, attachments);
     // Without async lookup, fall back to user ID for human users
     const userName = event.username || event.user || "unknown";
     const fullName = event.username || event.user || "unknown";
@@ -6784,7 +6789,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     event: SlackEvent,
     text: string,
     attachments = authorAttachments(event).map(attachmentContent)
-  ): FormattedContent {
+  ): Promise<FormattedContent> {
     const body = layoutBlockBody(event);
     return this.assembleContent(
       body
@@ -6865,27 +6870,33 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
   }
 
   /**
-   * Render a message body and its attachments. All of the message's mrkdwn
-   * shares one parse budget (see `incomingPartsParser`).
+   * Render a message body and its attachments. Every mrkdwn part is parsed
+   * up front, so the tree is built synchronously.
    */
-  private assembleContent(
+  private async assembleContent(
     source: SlackContentSource,
     attachments: SlackAttachmentContent[]
-  ): FormattedContent {
-    const parse = this.formatConverter.incomingPartsParser(
-      contentParts(source, attachments)
+  ): Promise<FormattedContent> {
+    const parsed = new Map(
+      await Promise.all(
+        contentParts(source, attachments).map(
+          async (part) =>
+            [
+              part,
+              (await this.formatConverter.parseIncoming(part)).formatted,
+            ] as const
+        )
+      )
     );
-    return {
-      type: "root",
-      children: [
-        ...("body" in source
-          ? this.bodyNodes(source.body, parse)
-          : this.textNodes(source.text, source.tables, parse)),
-        ...attachments.flatMap((attachment) =>
-          this.attachmentNodes(attachment, parse)
-        ),
-      ],
-    };
+    const parse: SlackMrkdwnParser = (mrkdwn) => parsed.get(mrkdwn) ?? root([]);
+    return root([
+      ...("body" in source
+        ? this.bodyNodes(source.body, parse)
+        : this.textNodes(source.text, source.tables, parse)),
+      ...attachments.flatMap((attachment) =>
+        this.attachmentNodes(attachment, parse)
+      ),
+    ]);
   }
 
   /** Render `text` as the message body, between its leading and trailing tables. */
@@ -6893,10 +6904,10 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     text: string,
     tables: SlackEventTables,
     parse: SlackMrkdwnParser
-  ): SlackContentNode[] {
+  ): Content[] {
     return [
       ...tables.leading.map((data) => this.tableNode(data, parse)),
-      ...parse(text).children,
+      ...parse(text).nodes,
       ...tables.trailing.map((data) => this.tableNode(data, parse)),
     ];
   }
@@ -6908,13 +6919,13 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
   private bodyNodes(
     items: SlackBodyItem[],
     parse: SlackMrkdwnParser
-  ): SlackContentNode[] {
-    return items.flatMap((item): SlackContentNode[] => {
+  ): Content[] {
+    return items.flatMap((item): Content[] => {
       if ("table" in item) {
         return [this.tableNode(item.table, parse)];
       }
       if ("mrkdwn" in item) {
-        return parse(item.mrkdwn).children;
+        return parse(item.mrkdwn).nodes;
       }
       return literalParagraphs(item.literal);
     });
@@ -6931,8 +6942,8 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
   private attachmentNodes(
     content: SlackAttachmentContent,
     parse: SlackMrkdwnParser
-  ): SlackContentNode[] {
-    const nodes: SlackContentNode[] = [];
+  ): Content[] {
+    const nodes: Content[] = [];
     let literals: string[] = [];
     const flush = () => {
       nodes.push(...literalParagraphs(literals.join("\n")));
@@ -6942,7 +6953,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     for (const part of content.parts) {
       if ("mrkdwn" in part) {
         flush();
-        nodes.push(...parse(part.mrkdwn).children);
+        nodes.push(...parse(part.mrkdwn).nodes);
       } else {
         literals.push(part.literal);
       }
@@ -6955,25 +6966,20 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
   private tableNode(
     data: SlackTableData,
     parse: SlackMrkdwnParser
-  ): SlackTable {
-    const rows: SlackTableRow[] = data.rows.map((row) => ({
-      type: "tableRow",
-      children: row.map((cell) => ({
-        type: "tableCell",
-        children: this.cellChildren(cell, parse),
-      })),
-    }));
+  ): MdastTable {
+    const row = (cells: Content[][]): TableRow => [
+      "tr",
+      {},
+      ...cells.map((children): Content => ["td", {}, ...children]),
+    ];
+    const rows = data.rows.map((cells) =>
+      row(cells.map((cell) => this.cellChildren(cell, parse)))
+    );
     if (data.headerless) {
-      const width = Math.max(...data.rows.map((row) => row.length));
-      rows.unshift({
-        type: "tableRow",
-        children: Array.from({ length: width }, () => ({
-          type: "tableCell",
-          children: [],
-        })),
-      });
+      const width = Math.max(...data.rows.map((cells) => cells.length));
+      rows.unshift(row(Array.from({ length: width }, () => [])));
     }
-    return { type: "table", children: rows };
+    return ["table", {}, ...rows];
   }
 
   /**
@@ -6981,25 +6987,19 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
    * same format converter used for body text, so mentions, links, and emoji
    * render consistently.
    */
-  private cellChildren(
-    cell: string,
-    parse: SlackMrkdwnParser
-  ): SlackTableCell["children"] {
+  private cellChildren(cell: string, parse: SlackMrkdwnParser): Content[] {
     if (!cell) {
       return [];
     }
-    const children: SlackTableCell["children"] = [];
-    for (const node of parse(cell).children) {
+    const children: Content[] = [];
+    for (const node of parse(cell).nodes) {
       if (children.length > 0) {
-        children.push({ type: "text", value: "\n" });
+        children.push("\n");
       }
-      if (node.type === "paragraph") {
-        children.push(...node.children);
+      if (isParagraphNode(node)) {
+        children.push(...getNodeChildren(node));
       } else {
-        children.push({
-          type: "text",
-          value: toPlainText({ type: "root", children: [node] }),
-        });
+        children.push(toPlainText(root([node])));
       }
     }
     return children;
@@ -7322,7 +7322,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
     };
   }
 
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 
@@ -7474,7 +7474,7 @@ export class SlackAdapter implements Adapter<SlackThreadId, unknown> {
       } else {
         payload = {
           replace_original: true,
-          text: this.formatConverter.toResponseUrlText(message),
+          text: await this.formatConverter.toResponseUrlText(message),
         };
       }
       if (options?.threadTs) {

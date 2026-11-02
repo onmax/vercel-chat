@@ -1268,7 +1268,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
     const parsedMessage = new Message({
       id: message.name,
       threadId,
-      ...this.formatConverter.parseIncoming(text),
+      ...(await this.formatConverter.parseIncoming(text)),
       raw: notification,
       author: {
         userId,
@@ -1434,15 +1434,15 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
     this.chat.processMessage(
       this,
       threadId,
-      this.parseGoogleChatMessage(event, threadId),
+      () => this.parseGoogleChatMessage(event, threadId),
       options
     );
   }
 
-  protected parseGoogleChatMessage(
+  protected async parseGoogleChatMessage(
     event: GoogleChatEvent,
     threadId: string
-  ): Message<unknown> {
+  ): Promise<Message<unknown>> {
     const message = event.chat?.messagePayload?.message;
     if (!message) {
       throw new ValidationError("gchat", "Event has no message payload");
@@ -1475,7 +1475,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
     return new Message({
       id: message.name,
       threadId,
-      ...this.formatConverter.parseIncoming(text),
+      ...(await this.formatConverter.parseIncoming(text)),
       raw: event,
       author: {
         userId,
@@ -1555,7 +1555,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
 
       // Regular text message
       const text = convertEmojiPlaceholders(
-        this.formatConverter.renderPostable(message),
+        await this.formatConverter.renderPostable(message),
         "gchat"
       );
 
@@ -1629,7 +1629,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
       } else {
         // Regular text message
         requestBody.text = convertEmojiPlaceholders(
-          this.formatConverter.renderPostable(message),
+          await this.formatConverter.renderPostable(message),
           "gchat"
         );
 
@@ -1779,7 +1779,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
 
       // Regular text message
       const text = convertEmojiPlaceholders(
-        this.formatConverter.renderPostable(message),
+        await this.formatConverter.renderPostable(message),
         "gchat"
       );
 
@@ -2175,7 +2175,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
     return new Message({
       id: msg.name || "",
       threadId: msgThreadId,
-      ...this.formatConverter.parseIncoming(msg.text || ""),
+      ...(await this.formatConverter.parseIncoming(msg.text || "")),
       raw: msg,
       author: {
         userId,
@@ -2627,7 +2627,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
 
       // Regular text message
       const text = convertEmojiPlaceholders(
-        this.formatConverter.renderPostable(message),
+        await this.formatConverter.renderPostable(message),
         "gchat"
       );
 
@@ -2718,7 +2718,7 @@ export class GoogleChatAdapter implements Adapter<GoogleChatThreadId, unknown> {
     }
   }
 
-  parseMessage(raw: unknown): Message<unknown> {
+  async parseMessage(raw: unknown): Promise<Message<unknown>> {
     const event = raw as GoogleChatEvent;
     const messagePayload = event.chat?.messagePayload;
     if (!messagePayload) {

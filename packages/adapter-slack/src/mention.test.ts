@@ -68,7 +68,8 @@ describe("isBotMention", () => {
       }
       const isMention = isBotMention(payload.raw, BOT_USER_ID);
       expect(isMention).toBe(
-        adapter.parseMessage(payload.raw as unknown as SlackEvent).isMention
+        (await adapter.parseMessage(payload.raw as unknown as SlackEvent))
+          .isMention
       );
       results.push({ text: payload.text, isMention });
     }
@@ -217,7 +218,7 @@ describe("isBotMention", () => {
 
   it.each(
     cases
-  )("classifies %s like message.isMention", (_name, fields, expected) => {
+  )("classifies %s like message.isMention", async (_name, fields, expected) => {
     const event: SlackEvent = {
       type: "app_mention",
       user: "U_SENDER",
@@ -227,13 +228,15 @@ describe("isBotMention", () => {
     };
 
     expect(isBotMention(event, "U_BOT")).toBe(expected);
-    expect(createAdapter("U_BOT").parseMessage(event).isMention).toBe(expected);
+    expect((await createAdapter("U_BOT").parseMessage(event)).isMention).toBe(
+      expected
+    );
   });
 
   it.each([
     ["a code-only token", "see `<@U_BOT>`", richText(code("@bot")), false],
     ["a real mention", "<@U_BOT> hi", richText(user("U_BOT")), true],
-  ])("classifies a message event with %s", (_name, text, blocks, expected) => {
+  ])("classifies a message event with %s", async (_name, text, blocks, expected) => {
     const event: SlackEvent = {
       type: "message",
       user: "U_SENDER",
@@ -244,7 +247,9 @@ describe("isBotMention", () => {
     };
 
     expect(isBotMention(event, "U_BOT")).toBe(expected);
-    expect(createAdapter("U_BOT").parseMessage(event).isMention).toBe(expected);
+    expect((await createAdapter("U_BOT").parseMessage(event)).isMention).toBe(
+      expected
+    );
   });
 
   it.each([

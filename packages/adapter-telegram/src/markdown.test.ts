@@ -65,107 +65,107 @@ describe("TelegramFormatConverter", () => {
   const converter = new TelegramFormatConverter();
 
   describe("fromAst — inline formatting", () => {
-    it("passes plain text through unchanged", () => {
-      expect(converter.fromAst(converter.toAst("Hello world"))).toBe(
+    it("passes plain text through unchanged", async () => {
+      expect(converter.fromAst(await converter.toAst("Hello world"))).toBe(
         "Hello world"
       );
     });
 
-    it("renders bold with single asterisks", () => {
-      expect(converter.fromAst(converter.toAst("**bold text**"))).toBe(
+    it("renders bold with single asterisks", async () => {
+      expect(converter.fromAst(await converter.toAst("**bold text**"))).toBe(
         "*bold text*"
       );
     });
 
-    it("renders italic with underscores", () => {
-      expect(converter.fromAst(converter.toAst("*italic text*"))).toBe(
+    it("renders italic with underscores", async () => {
+      expect(converter.fromAst(await converter.toAst("*italic text*"))).toBe(
         "_italic text_"
       );
     });
 
-    it("renders strikethrough with single tilde", () => {
-      expect(converter.fromAst(converter.toAst("~~strikethrough~~"))).toBe(
-        "~strikethrough~"
-      );
+    it("renders strikethrough with single tilde", async () => {
+      expect(
+        converter.fromAst(await converter.toAst("~~strikethrough~~"))
+      ).toBe("~strikethrough~");
     });
 
-    it("escapes special chars inside bold", () => {
-      expect(converter.fromAst(converter.toAst("**Note: important!**"))).toBe(
-        "*Note: important\\!*"
-      );
+    it("escapes special chars inside bold", async () => {
+      expect(
+        converter.fromAst(await converter.toAst("**Note: important!**"))
+      ).toBe("*Note: important\\!*");
     });
 
-    it("escapes special chars inside italic", () => {
-      expect(converter.fromAst(converter.toAst("*price: $50.*"))).toBe(
+    it("escapes special chars inside italic", async () => {
+      expect(converter.fromAst(await converter.toAst("*price: $50.*"))).toBe(
         "_price: $50\\._"
       );
     });
 
-    it("preserves inline code content verbatim", () => {
-      expect(converter.fromAst(converter.toAst("Use `const x = 1`"))).toContain(
-        "`const x = 1`"
-      );
+    it("preserves inline code content verbatim", async () => {
+      expect(
+        converter.fromAst(await converter.toAst("Use `const x = 1`"))
+      ).toContain("`const x = 1`");
     });
 
-    it("escapes only backtick and backslash inside inline code", () => {
+    it("escapes only backtick and backslash inside inline code", async () => {
       expect(
         converter
-          .fromAst(converter.toAst("Use `foo.bar!` here"))
+          .fromAst(await converter.toAst("Use `foo.bar!` here"))
           .includes("`foo.bar!`")
       ).toBe(true);
     });
   });
 
   describe("fromAst — code blocks", () => {
-    it("wraps code blocks with triple backticks and language", () => {
+    it("wraps code blocks with triple backticks and language", async () => {
       const output = converter.fromAst(
-        converter.toAst("```js\nconst x = 1;\n```")
+        await converter.toAst("```js\nconst x = 1;\n```")
       );
       expect(output).toContain("```js");
       expect(output).toContain("const x = 1;");
       expect(output).toMatch(TRAILING_TRIPLE_BACKTICK_PATTERN);
     });
 
-    it("escapes only backtick and backslash inside fenced code", () => {
+    it("escapes only backtick and backslash inside fenced code", async () => {
       const output = converter.fromAst(
-        converter.toAst("```\nfoo.bar! + (test) = [ok]\n```")
+        await converter.toAst("```\nfoo.bar! + (test) = [ok]\n```")
       );
       // Normal-text special chars must NOT be escaped inside code blocks.
       expect(output).toContain("foo.bar! + (test) = [ok]");
     });
 
-    it("escapes a backslash inside fenced code", () => {
+    it("escapes a backslash inside fenced code", async () => {
       const output = converter.fromAst(
-        converter.toAst("```\npath\\\\to\\\\file\n```")
+        await converter.toAst("```\npath\\\\to\\\\file\n```")
       );
       expect(output).toContain("\\\\");
     });
   });
 
   describe("fromAst — links and images", () => {
-    it("renders inline links", () => {
+    it("renders inline links", async () => {
       expect(
-        converter.fromAst(converter.toAst("[click](https://example.com)"))
+        converter.fromAst(await converter.toAst("[click](https://example.com)"))
       ).toBe("[click](https://example.com)");
     });
 
-    it("escapes only ) and \\ inside the URL", () => {
+    it("escapes only ) and \\ inside the URL", async () => {
       const input = "[label](https://example.com/path)";
-      expect(converter.fromAst(converter.toAst(input))).toBe(
+      expect(converter.fromAst(await converter.toAst(input))).toBe(
         "[label](https://example.com/path)"
       );
     });
 
-    it("escapes special chars inside link label text", () => {
+    it("escapes special chars inside link label text", async () => {
       const output = converter.fromAst(
-        converter.toAst("[hello!](https://example.com)")
+        await converter.toAst("[hello!](https://example.com)")
       );
       expect(output).toBe("[hello\\!](https://example.com)");
     });
 
-    it("renders an image as a link to the source", () => {
+    it("renders an image as a link to the source", async () => {
       const output = converter.fromAst(
-        converter.toAst("![alt text](https://example.com/pic.png)")
+        await converter.toAst("![alt text](https://example.com/pic.png)")
       );
       expect(output).toContain("alt text");
       expect(output).toContain("https://example.com/pic.png");
@@ -173,44 +173,50 @@ describe("TelegramFormatConverter", () => {
   });
 
   describe("fromAst — block structures", () => {
-    it("renders headings as bold (all levels)", () => {
+    it("renders headings as bold (all levels)", async () => {
       for (const level of [1, 2, 3, 4, 5, 6]) {
         const hashes = "#".repeat(level);
-        const output = converter.fromAst(converter.toAst(`${hashes} Title`));
+        const output = converter.fromAst(
+          await converter.toAst(`${hashes} Title`)
+        );
         expect(output).toBe("*Title*");
       }
     });
 
-    it("renders unordered lists with escaped dashes", () => {
-      const output = converter.fromAst(converter.toAst("- one\n- two"));
+    it("renders unordered lists with escaped dashes", async () => {
+      const output = converter.fromAst(await converter.toAst("- one\n- two"));
       expect(output).toContain("\\- one");
       expect(output).toContain("\\- two");
     });
 
-    it("renders ordered lists with escaped periods", () => {
-      const output = converter.fromAst(converter.toAst("1. first\n2. second"));
+    it("renders ordered lists with escaped periods", async () => {
+      const output = converter.fromAst(
+        await converter.toAst("1. first\n2. second")
+      );
       expect(output).toContain("1\\. first");
       expect(output).toContain("2\\. second");
     });
 
-    it("keeps the start number of ordered lists", () => {
-      const output = converter.fromAst(converter.toAst("3. third\n4. fourth"));
+    it("keeps the start number of ordered lists", async () => {
+      const output = converter.fromAst(
+        await converter.toAst("3. third\n4. fourth")
+      );
       expect(output).toBe("3\\. third\n4\\. fourth");
     });
 
-    it("renders blockquotes with > prefix per line", () => {
-      expect(converter.fromAst(converter.toAst("> quoted text"))).toContain(
-        ">quoted text"
-      );
+    it("renders blockquotes with > prefix per line", async () => {
+      expect(
+        converter.fromAst(await converter.toAst("> quoted text"))
+      ).toContain(">quoted text");
     });
 
-    it("renders thematic break as escaped em-dashes", () => {
-      expect(converter.fromAst(converter.toAst("---"))).toBe("———");
+    it("renders thematic break as escaped em-dashes", async () => {
+      expect(converter.fromAst(await converter.toAst("---"))).toBe("———");
     });
 
-    it("converts tables to ASCII code blocks and drops pipe syntax", () => {
+    it("converts tables to ASCII code blocks and drops pipe syntax", async () => {
       const output = converter.fromAst(
-        converter.toAst("| Name | Age |\n|------|-----|\n| Alice | 30 |")
+        await converter.toAst("| Name | Age |\n|------|-----|\n| Alice | 30 |")
       );
       expect(output).toContain("```");
       expect(output).toContain("Name");
@@ -220,25 +226,25 @@ describe("TelegramFormatConverter", () => {
   });
 
   describe("fromAst — nested formatting", () => {
-    it("renders bold containing italic", () => {
+    it("renders bold containing italic", async () => {
       // Markdown: **bold _italic_** → MarkdownV2: *bold _italic_*
-      const ast = converter.toAst("**bold _italic_**");
+      const ast = await converter.toAst("**bold _italic_**");
       const output = converter.fromAst(ast);
       expect(output).toContain("*");
       expect(output).toContain("_italic_");
     });
 
-    it("renders link containing inline code", () => {
+    it("renders link containing inline code", async () => {
       const output = converter.fromAst(
-        converter.toAst("[`code` link](https://example.com)")
+        await converter.toAst("[`code` link](https://example.com)")
       );
       expect(output).toContain("`code`");
       expect(output).toContain("https://example.com");
     });
 
-    it("renders list containing bold", () => {
+    it("renders list containing bold", async () => {
       const output = converter.fromAst(
-        converter.toAst("- **important** one\n- plain two")
+        await converter.toAst("- **important** one\n- plain two")
       );
       expect(output).toContain("*important*");
       expect(output).toContain("plain two");
@@ -246,22 +252,22 @@ describe("TelegramFormatConverter", () => {
   });
 
   describe("fromAst — edge cases", () => {
-    it("handles empty input", () => {
-      expect(converter.fromAst(converter.toAst(""))).toBe("");
+    it("handles empty input", async () => {
+      expect(converter.fromAst(await converter.toAst(""))).toBe("");
     });
 
-    it("handles whitespace-only input", () => {
-      expect(converter.fromAst(converter.toAst("   "))).toBe("");
+    it("handles whitespace-only input", async () => {
+      expect(converter.fromAst(await converter.toAst("   "))).toBe("");
     });
 
-    it("trims trailing whitespace", () => {
-      const output = converter.fromAst(converter.toAst("Hello\n\n"));
+    it("trims trailing whitespace", async () => {
+      const output = converter.fromAst(await converter.toAst("Hello\n\n"));
       expect(output.endsWith("\n")).toBe(false);
     });
 
-    it("escapes HTML input literally rather than interpreting it", () => {
+    it("escapes HTML input literally rather than interpreting it", async () => {
       // Telegram MarkdownV2 has no HTML support; raw HTML must not crash.
-      const output = converter.fromAst(converter.toAst("<b>hi</b>"));
+      const output = converter.fromAst(await converter.toAst("<b>hi</b>"));
       expect(output).not.toContain("<b>");
     });
   });
@@ -306,8 +312,8 @@ describe("TelegramFormatConverter", () => {
       "~~Previous version priced at $2,800~~. New total: **$2,450**.",
     ].join("\n");
 
-    it("produces non-empty output covering every structural element", () => {
-      const output = converter.fromAst(converter.toAst(LLM_CORPUS));
+    it("produces non-empty output covering every structural element", async () => {
+      const output = converter.fromAst(await converter.toAst(LLM_CORPUS));
       // Sanity — structural elements all present in some form.
       expect(output).toContain("*Trip Summary");
       expect(output).toContain("\\- Airport pickup");
@@ -322,8 +328,8 @@ describe("TelegramFormatConverter", () => {
       expect(output).toContain("———");
     });
 
-    it("escapes every in-text MarkdownV2 special character outside code and link URLs", () => {
-      const output = converter.fromAst(converter.toAst(LLM_CORPUS));
+    it("escapes every in-text MarkdownV2 special character outside code and link URLs", async () => {
+      const output = converter.fromAst(await converter.toAst(LLM_CORPUS));
 
       // Strip code blocks and link URLs — inside those, different rules apply.
       const withoutCodeBlocks = output.replace(/```[\s\S]*?```/g, "");
@@ -344,8 +350,8 @@ describe("TelegramFormatConverter", () => {
       }
     });
 
-    it("preserves code block contents verbatim (no over-escaping)", () => {
-      const output = converter.fromAst(converter.toAst(LLM_CORPUS));
+    it("preserves code block contents verbatim (no over-escaping)", async () => {
+      const output = converter.fromAst(await converter.toAst(LLM_CORPUS));
       const codeBlockMatch = BASH_CODE_BLOCK_PATTERN.exec(output);
       expect(codeBlockMatch).not.toBeNull();
       const codeContent = codeBlockMatch?.[1] ?? "";
@@ -357,35 +363,37 @@ describe("TelegramFormatConverter", () => {
   });
 
   describe("renderPostable", () => {
-    it("returns a plain string as-is", () => {
-      expect(converter.renderPostable("Hello world")).toBe("Hello world");
+    it("returns a plain string as-is", async () => {
+      expect(await converter.renderPostable("Hello world")).toBe("Hello world");
     });
 
-    it("returns an empty string unchanged", () => {
-      expect(converter.renderPostable("")).toBe("");
+    it("returns an empty string unchanged", async () => {
+      expect(await converter.renderPostable("")).toBe("");
     });
 
-    it("returns a raw message directly", () => {
-      expect(converter.renderPostable({ raw: "raw content" })).toBe(
+    it("returns a raw message directly", async () => {
+      expect(await converter.renderPostable({ raw: "raw content" })).toBe(
         "raw content"
       );
     });
 
-    it("renders a markdown message as MarkdownV2", () => {
-      const result = converter.renderPostable({
+    it("renders a markdown message as MarkdownV2", async () => {
+      const result = await converter.renderPostable({
         markdown: "**bold** and *italic*",
       });
       expect(result).toContain("*bold*");
       expect(result).toContain("_italic_");
     });
 
-    it("renders an AST message", () => {
-      const ast = converter.toAst("Hello from AST");
-      expect(converter.renderPostable({ ast })).toContain("Hello from AST");
+    it("renders an AST message", async () => {
+      const ast = await converter.toAst("Hello from AST");
+      expect(await converter.renderPostable({ ast })).toContain(
+        "Hello from AST"
+      );
     });
 
-    it("renders a markdown table as a code block", () => {
-      const result = converter.renderPostable({
+    it("renders a markdown table as a code block", async () => {
+      const result = await converter.renderPostable({
         markdown: "| A | B |\n| --- | --- |\n| 1 | 2 |",
       });
       expect(result).toContain("```");
@@ -394,76 +402,76 @@ describe("TelegramFormatConverter", () => {
   });
 
   describe("toAst", () => {
-    it("parses plain text", () => {
-      const ast = converter.toAst("Hello world");
-      expect(ast.type).toBe("root");
-      expect(ast.children.length).toBeGreaterThan(0);
+    it("parses plain text", async () => {
+      const ast = await converter.toAst("Hello world");
+      expect(ast.nodes.length).toBeGreaterThan(0);
     });
 
-    it("parses bold", () => {
-      const ast = converter.toAst("**bold**");
-      expect(ast.type).toBe("root");
-      expect(ast.children.length).toBeGreaterThan(0);
+    it("parses bold", async () => {
+      const ast = await converter.toAst("**bold**");
+      expect(ast.nodes.length).toBeGreaterThan(0);
     });
 
-    it("parses italic", () => {
-      const ast = converter.toAst("*italic*");
-      expect(ast.type).toBe("root");
-      expect(ast.children.length).toBeGreaterThan(0);
+    it("parses italic", async () => {
+      const ast = await converter.toAst("*italic*");
+      expect(ast.nodes.length).toBeGreaterThan(0);
     });
 
-    it("parses inline code", () => {
-      const ast = converter.toAst("`code`");
-      expect(ast.type).toBe("root");
-      expect(ast.children.length).toBeGreaterThan(0);
+    it("parses inline code", async () => {
+      const ast = await converter.toAst("`code`");
+      expect(ast.nodes.length).toBeGreaterThan(0);
     });
   });
 
   describe("extractPlainText", () => {
-    it("strips bold markers", () => {
-      expect(converter.extractPlainText("Hello **world**!")).toBe(
+    it("strips bold markers", async () => {
+      expect(await converter.extractPlainText("Hello **world**!")).toBe(
         "Hello world!"
       );
     });
 
-    it("strips italic markers", () => {
-      expect(converter.extractPlainText("Hello *world*!")).toBe("Hello world!");
-    });
-
-    it("strips strikethrough markers", () => {
-      expect(converter.extractPlainText("Hello ~~world~~!")).toBe(
+    it("strips italic markers", async () => {
+      expect(await converter.extractPlainText("Hello *world*!")).toBe(
         "Hello world!"
       );
     });
 
-    it("extracts link text", () => {
+    it("strips strikethrough markers", async () => {
+      expect(await converter.extractPlainText("Hello ~~world~~!")).toBe(
+        "Hello world!"
+      );
+    });
+
+    it("extracts link text", async () => {
       expect(
-        converter.extractPlainText("Check [this](https://example.com)")
+        await converter.extractPlainText("Check [this](https://example.com)")
       ).toBe("Check this");
     });
 
-    it("preserves inline code content", () => {
-      expect(converter.extractPlainText("Use `const x = 1`")).toContain(
+    it("preserves inline code content", async () => {
+      expect(await converter.extractPlainText("Use `const x = 1`")).toContain(
         "const x = 1"
       );
     });
 
-    it("preserves code block content", () => {
-      expect(converter.extractPlainText("```js\nconst x = 1;\n```")).toContain(
-        "const x = 1;"
+    it("preserves code block content", async () => {
+      expect(
+        await converter.extractPlainText("```js\nconst x = 1;\n```")
+      ).toContain("const x = 1;");
+    });
+
+    it("returns plain text unchanged", async () => {
+      expect(await converter.extractPlainText("Hello world")).toBe(
+        "Hello world"
       );
     });
 
-    it("returns plain text unchanged", () => {
-      expect(converter.extractPlainText("Hello world")).toBe("Hello world");
+    it("returns empty string unchanged", async () => {
+      expect(await converter.extractPlainText("")).toBe("");
     });
 
-    it("returns empty string unchanged", () => {
-      expect(converter.extractPlainText("")).toBe("");
-    });
-
-    it("strips all formatting from complex input", () => {
-      const result = converter.extractPlainText(
+    it("strips all formatting from complex input", async () => {
+      const result = await converter.extractPlainText(
         "**Bold** and *italic* with [link](https://x.com)"
       );
       expect(result).toContain("Bold");
@@ -538,9 +546,9 @@ describe("truncateForTelegram", () => {
     expect(truncateForTelegram(input, 11, "MarkdownV2")).toBe("__b__\\.\\.\\.");
   });
 
-  it("keeps a rendered link whose URL has odd underscores when the cut lands after it", () => {
+  it("keeps a rendered link whose URL has odd underscores when the cut lands after it", async () => {
     const converter = new TelegramFormatConverter();
-    const rendered = converter.renderPostable({
+    const rendered = await converter.renderPostable({
       markdown:
         "body text\n\n[Read more](https://example.com/page?first_param=a&second_param=b&third_param=c)",
     });
@@ -637,24 +645,29 @@ describe("trimToMarkdownV2SafeBoundary", () => {
       expect(trimToMarkdownV2SafeBoundary(input)).toBe(input);
     });
 
-    it("preserves an explicit Markdown link with a backtick destination", () => {
+    it("preserves an explicit Markdown link with a backtick destination", async () => {
       const converter = new TelegramFormatConverter();
-      const rendered = converter.renderPostable({
+      const rendered = await converter.renderPostable({
         markdown: "[x](https://example.com/a`b)",
       });
-      expect(rendered).toBe("[x](https://example.com/a`b)");
-      expect(trimToMarkdownV2SafeBoundary(rendered)).toBe(rendered);
+      // The parser percent-encodes the destination.
+      expect(rendered).toBe("[x](https://example.com/a%60b)");
+      const literal = "[x](https://example.com/a`b)";
+      expect(trimToMarkdownV2SafeBoundary(literal)).toBe(literal);
     });
 
-    it("preserves an autolinked bare URL containing a backtick", () => {
+    it("preserves an autolinked bare URL containing a backtick", async () => {
       const converter = new TelegramFormatConverter();
-      const rendered = converter.renderPostable({
+      const rendered = await converter.renderPostable({
         markdown: "before https://example.com/a`b after",
       });
       expect(rendered).toBe(
-        "before [https://example\\.com/a\\`b](https://example.com/a`b) after"
+        "before [https://example\\.com/a\\`b](https://example.com/a%60b) after"
       );
       expect(trimToMarkdownV2SafeBoundary(rendered)).toBe(rendered);
+      const literal =
+        "before [https://example\\.com/a\\`b](https://example.com/a`b) after";
+      expect(trimToMarkdownV2SafeBoundary(literal)).toBe(literal);
     });
 
     it.each([

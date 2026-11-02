@@ -39,6 +39,8 @@ import {
   DEFAULT_EMOJI_MAP,
   defaultEmojiResolver,
   getEmoji,
+  getNodeChildren,
+  getNodeTag,
   Message,
 } from "chat";
 import { cardToGitLabMarkdown } from "./cards";
@@ -98,16 +100,22 @@ const PAGE_PATTERN = /^[1-9]\d*$/;
 const DETECT_RETRY_COOLDOWN_MS = 30_000;
 const DETECT_TIMEOUT_MS = 5000;
 const REGEX_SPECIAL_PATTERN = /[.*+?^${}()|[\]\\]/g;
-const INLINE_PARENT_TYPES = new Set([
-  "paragraph",
-  "heading",
-  "emphasis",
+const INLINE_PARENT_TAGS = new Set([
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "em",
   "strong",
-  "delete",
-  "link",
-  "linkReference",
-  "tableCell",
+  "del",
+  "a",
+  "th",
+  "td",
 ]);
+const OPAQUE_TAGS = new Set(["pre", "code", "blockquote", "img", "hr"]);
 
 /**
  * GitLab award emoji names for normalized emoji whose Slack-style shortcode
@@ -731,7 +739,7 @@ export class GitLabAdapter
       return;
     }
 
-    const message = this.parseMessage(raw);
+    const message = await this.parseMessage(raw);
     this.chat.processMessage(this, message.threadId, message, options);
   }
 
@@ -814,14 +822,14 @@ export class GitLabAdapter
   /**
    * Parse a raw GitLab message into a normalized Message.
    */
-  parseMessage(raw: GitLabRawMessage): Message<GitLabRawMessage> {
+  parseMessage(raw: GitLabRawMessage): Promise<Message<GitLabRawMessage>> {
     return this.buildMessage(raw, raw.note.id.toString());
   }
 
-  protected buildMessage(
+  protected async buildMessage(
     raw: GitLabRawMessage,
     id: string
-  ): Message<GitLabRawMessage> {
+  ): Promise<Message<GitLabRawMessage>> {
     const { note } = raw;
     const threadId = this.encodeThreadId({
       projectId: raw.projectId,
@@ -829,7 +837,9 @@ export class GitLabAdapter
       noteableIid: raw.noteableIid,
       discussionId: raw.discussionId,
     });
-    const { formatted, text } = this.formatConverter.parseIncoming(note.body);
+    const { formatted, text } = await this.formatConverter.parseIncoming(
+      note.body
+    );
 
     return new Message({
       id,
@@ -884,11 +894,11 @@ export class GitLabAdapter
   /**
    * Render a postable message to a GitLab comment body.
    */
-  protected renderBody(message: AdapterPostableMessage): string {
+  protected async renderBody(message: AdapterPostableMessage): Promise<string> {
     const card = extractCard(message);
     const body = card
       ? cardToGitLabMarkdown(card)
-      : this.formatConverter.renderPostable(message);
+      : await this.formatConverter.renderPostable(message);
     return convertEmojiPlaceholders(body, "gitlab");
   }
 
@@ -931,7 +941,7 @@ export class GitLabAdapter
     const thread = this.decodeThreadId(threadId);
     const { projectId, noteableType, noteableIid, discussionId } = thread;
 
-    let body = this.renderBody(message);
+    let body = await this.renderBody(message);
     const files = extractFiles(message);
     if (files.length > 0) {
       const references = await this.uploadFiles(projectId, files);
@@ -967,7 +977,7 @@ export class GitLabAdapter
     const note = await this.request<GitLabNote>(
       "PUT",
       this.notePath(thread, messageId),
-      { body: { body: this.renderBody(message) } }
+      { body: { body: await this.renderBody(message) } }
     );
 
     return {
@@ -1120,9 +1130,11 @@ export class GitLabAdapter
     const direction = options?.direction ?? "backward";
     const basePath = this.noteablePath(projectId, noteableType, noteableIid);
     const toMessages = (notes: GitLabNote[]) =>
-      notes
-        .filter((note) => !(note.system || isInternalNote(note)))
-        .map((note) => this.parseMessage(this.toRawMessage(note, thread)));
+      Promise.all(
+        notes
+          .filter((note) => !(note.system || isInternalNote(note)))
+          .map((note) => this.parseMessage(this.toRawMessage(note, thread)))
+      );
 
     if (!discussionId) {
       const response = await this.rawRequest("GET", `${basePath}/notes`, {
@@ -1141,7 +1153,7 @@ export class GitLabAdapter
         notes.reverse();
       }
       return {
-        messages: toMessages(notes),
+        messages: await toMessages(notes),
         // GitLab filters notes after paginating, so a short page doesn't mean
         // it's the last one. Trust the header instead of the item count.
         nextCursor: response.headers.get("x-next-page") || undefined,
@@ -1152,7 +1164,7 @@ export class GitLabAdapter
       "GET",
       `${basePath}/discussions/${discussionId}`
     );
-    let messages = toMessages(discussion.notes);
+    let messages = await toMessages(discussion.notes);
     messages.sort(
       (a, b) => a.metadata.dateSent.getTime() - b.metadata.dateSent.getTime()
     );
@@ -1184,7 +1196,7 @@ export class GitLabAdapter
       if (isInternalNote(note)) {
         return null;
       }
-      return this.parseMessage(this.toRawMessage(note, thread));
+      return await this.parseMessage(this.toRawMessage(note, thread));
     } catch (error) {
       if (error instanceof ResourceNotFoundError) {
         return null;
@@ -1304,35 +1316,37 @@ export class GitLabAdapter
     );
     const mergeRequests = (await response.json()) as GitLabMergeRequest[];
 
-    const threads = mergeRequests.map((mr) => {
-      const thread: GitLabThreadId = {
-        projectId,
-        noteableType: "merge_request",
-        noteableIid: mr.iid,
-      };
-      // The description isn't a note, so the root message gets an ID that can't
-      // collide with a note ID. Note operations on it fail with a 404.
-      const rootMessage = this.buildMessage(
-        this.toRawMessage(
-          {
-            id: mr.id,
-            body: mr.description || mr.title,
-            author: mr.author,
-            created_at: mr.created_at,
-            updated_at: mr.updated_at,
-            system: false,
-            type: null,
-          },
-          thread
-        ),
-        `mr-${mr.iid}`
-      );
-      return {
-        id: this.encodeThreadId(thread),
-        rootMessage,
-        lastReplyAt: parseGitLabDate(mr.updated_at),
-      };
-    });
+    const threads = await Promise.all(
+      mergeRequests.map(async (mr) => {
+        const thread: GitLabThreadId = {
+          projectId,
+          noteableType: "merge_request",
+          noteableIid: mr.iid,
+        };
+        // The description isn't a note, so the root message gets an ID that can't
+        // collide with a note ID. Note operations on it fail with a 404.
+        const rootMessage = await this.buildMessage(
+          this.toRawMessage(
+            {
+              id: mr.id,
+              body: mr.description || mr.title,
+              author: mr.author,
+              created_at: mr.created_at,
+              updated_at: mr.updated_at,
+              system: false,
+              type: null,
+            },
+            thread
+          ),
+          `mr-${mr.iid}`
+        );
+        return {
+          id: this.encodeThreadId(thread),
+          rootMessage,
+          lastReplyAt: parseGitLabDate(mr.updated_at),
+        };
+      })
+    );
 
     const nextCursor = response.headers.get("x-next-page") || undefined;
     return { threads, nextCursor };
@@ -1366,7 +1380,7 @@ export class GitLabAdapter
   /**
    * Render formatted content to GitLab markdown.
    */
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 
@@ -1508,33 +1522,24 @@ function mentionsUser(ast: Root, userName: string): boolean {
     `(?<!\\w)@${userName.replace(REGEX_SPECIAL_PATTERN, "\\$&")}(?![\\w-])`,
     "i"
   );
-  return pattern.test(mentionableText(ast));
+  return pattern.test(ast.nodes.map(mentionableText).join("\n"));
 }
 
-function mentionableText(node: Content | Root): string {
-  // Excluded and opaque nodes still separate their neighbors, so
-  // `x<br>@bot` or a hard line break before `@bot` still reads as a mention.
-  if (
-    node.type === "code" ||
-    node.type === "inlineCode" ||
-    node.type === "blockquote" ||
-    node.type === "html"
-  ) {
-    return " ";
+function mentionableText(node: Content): string {
+  if (typeof node === "string") {
+    return node;
   }
-  if (node.type === "break") {
+  const tag = getNodeTag(node);
+  // Opaque nodes and hard breaks still separate their neighbors, so
+  // `x![](i)@bot` or a line break before `@bot` still reads as a mention.
+  if (tag === "br") {
     return "\n";
   }
-  if (node.type === "text") {
-    return node.value;
-  }
-  if (!("children" in node)) {
+  if (tag === undefined || OPAQUE_TAGS.has(tag)) {
     return " ";
   }
-  const separator = INLINE_PARENT_TYPES.has(node.type) ? "" : "\n";
-  return node.children
-    .map((child) => mentionableText(child as Content))
-    .join(separator);
+  const separator = INLINE_PARENT_TAGS.has(tag) ? "" : "\n";
+  return getNodeChildren(node).map(mentionableText).join(separator);
 }
 
 /**

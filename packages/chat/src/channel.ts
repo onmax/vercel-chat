@@ -330,7 +330,7 @@ export class ChannelImpl<TState = Record<string, unknown>>
       ? await this.adapter.postChannelMessage(this.id, postable)
       : await this.adapter.postMessage(this.id, postable);
 
-    const sent = this.createSentMessage(
+    const sent = await this.createSentMessage(
       rawMessage.id,
       postable,
       rawMessage.threadId
@@ -489,17 +489,17 @@ export class ChannelImpl<TState = Record<string, unknown>>
     return ChannelImpl.fromJSON(data);
   }
 
-  private createSentMessage(
+  private async createSentMessage(
     messageId: string,
     postable: AdapterPostableMessage,
     threadIdOverride?: string
-  ): SentMessage {
+  ): Promise<SentMessage> {
     const adapter = this.adapter;
     const threadId = threadIdOverride || this.id;
     const self = this;
 
     const { plainText, formatted, attachments } =
-      extractMessageContent(postable);
+      await extractMessageContent(postable);
 
     const sentMessage: SentMessage = {
       id: messageId,
@@ -573,11 +573,11 @@ export function deriveChannelId(adapter: Adapter, threadId: string): string {
 /**
  * Extract plain text, AST, and attachments from a message.
  */
-function extractMessageContent(message: AdapterPostableMessage): {
+async function extractMessageContent(message: AdapterPostableMessage): Promise<{
   plainText: string;
-  formatted: import("mdast").Root;
+  formatted: import("./markdown").Root;
   attachments: import("./types").Attachment[];
-} {
+}> {
   if (typeof message === "string") {
     return {
       plainText: message,
@@ -595,7 +595,7 @@ function extractMessageContent(message: AdapterPostableMessage): {
   }
 
   if ("markdown" in message) {
-    const ast = parseMarkdown(message.markdown);
+    const ast = await parseMarkdown(message.markdown);
     return {
       plainText: toPlainText(ast),
       formatted: ast,

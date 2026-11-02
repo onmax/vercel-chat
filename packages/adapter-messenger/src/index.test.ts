@@ -13,7 +13,13 @@ import {
   selfMessageContract,
   threadIdContract,
 } from "@chat-adapter/tests";
-import { type ChatInstance, type Message, parseMarkdown } from "chat";
+import {
+  type ChatInstance,
+  type Message,
+  paragraph,
+  parseMarkdown,
+  root,
+} from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMessengerAdapter,
@@ -971,15 +977,7 @@ describe("MessengerAdapter", () => {
         );
 
         await adapter.postMessage("messenger:USER_123", {
-          ast: {
-            type: "root",
-            children: [
-              {
-                type: "paragraph",
-                children: [{ type: "text", value: "ast content" }],
-              },
-            ],
-          },
+          ast: root([paragraph(["ast content"])]),
         });
 
         const [, options] = mockFetch.mock.calls[1];
@@ -1277,19 +1275,19 @@ describe("MessengerAdapter", () => {
   });
 
   describe("message parsing", () => {
-    it("parses raw messages", () => {
+    it("parses raw messages", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent();
 
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.text).toBe("hello");
       expect(parsed.threadId).toBe("messenger:USER_123");
       expect(parsed.id).toBe("mid.abc123");
     });
 
-    it("sets isMention to true for all inbound messages", () => {
+    it("sets isMention to true for all inbound messages", async () => {
       const adapter = createAdapter();
-      const parsed = adapter.parseMessage(sampleMessagingEvent());
+      const parsed = await adapter.parseMessage(sampleMessagingEvent());
       expect(parsed.isMention).toBe(true);
     });
 
@@ -1299,27 +1297,27 @@ describe("MessengerAdapter", () => {
       mockFetch.mockResolvedValueOnce(
         graphApiOk({ id: "PAGE_456", name: "Test Page" })
       );
-      return adapter.initialize(chat).then(() => {
+      return adapter.initialize(chat).then(async () => {
         const event = sampleMessagingEvent({
           sender: { id: "PAGE_456" },
           message: { mid: "mid.echo", text: "bot says", is_echo: true },
         });
-        const parsed = adapter.parseMessage(event);
+        const parsed = await adapter.parseMessage(event);
         expect(parsed.author.isMe).toBe(true);
         expect(parsed.author.isBot).toBe(true);
       });
     });
 
-    it("parses message with empty text as empty string", () => {
+    it("parses message with empty text as empty string", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent({
         message: { mid: "mid.empty", text: undefined } as never,
       });
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.text).toBe("");
     });
 
-    it("parses message with quick_reply payload", () => {
+    it("parses message with quick_reply payload", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent({
         message: {
@@ -1328,12 +1326,12 @@ describe("MessengerAdapter", () => {
           quick_reply: { payload: "QR_YES" },
         },
       });
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.text).toBe("Yes");
       expect(parsed.id).toBe("mid.qr");
     });
 
-    it("handles message with no text and no postback title", () => {
+    it("handles message with no text and no postback title", async () => {
       const adapter = createAdapter();
       const event: MessengerMessagingEvent = {
         sender: { id: "USER_123" },
@@ -1346,12 +1344,12 @@ describe("MessengerAdapter", () => {
           ],
         },
       };
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.text).toBe("");
       expect(parsed.attachments).toHaveLength(1);
     });
 
-    it("uses event timestamp for ID when no mid", () => {
+    it("uses event timestamp for ID when no mid", async () => {
       const adapter = createAdapter();
       const event: MessengerMessagingEvent = {
         sender: { id: "USER_123" },
@@ -1360,12 +1358,12 @@ describe("MessengerAdapter", () => {
         postback: { title: "Get Started", payload: "START" },
       };
 
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.id).toBe("event:1735689600000");
       expect(parsed.text).toBe("Get Started");
     });
 
-    it("updates cached message when same ID is parsed again", () => {
+    it("updates cached message when same ID is parsed again", async () => {
       const adapter = createAdapter();
       const event1 = sampleMessagingEvent({
         message: { mid: "mid.dup", text: "first" },
@@ -1374,21 +1372,21 @@ describe("MessengerAdapter", () => {
         message: { mid: "mid.dup", text: "updated" },
       });
 
-      adapter.parseMessage(event1);
-      const updated = adapter.parseMessage(event2);
+      await adapter.parseMessage(event1);
+      const updated = await adapter.parseMessage(event2);
       expect(updated.text).toBe("updated");
     });
 
-    it("sorts messages by timestamp then by sequence number", () => {
+    it("sorts messages by timestamp then by sequence number", async () => {
       const adapter = createAdapter();
 
-      adapter.parseMessage({
+      await adapter.parseMessage({
         sender: { id: "USER_123" },
         recipient: { id: "PAGE_456" },
         timestamp: 1735689600000,
         message: { mid: "mid.abc:2", text: "second" },
       });
-      adapter.parseMessage({
+      await adapter.parseMessage({
         sender: { id: "USER_123" },
         recipient: { id: "PAGE_456" },
         timestamp: 1735689600000,
@@ -1422,7 +1420,7 @@ describe("MessengerAdapter", () => {
         },
       });
 
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.attachments).toHaveLength(5);
       expect(parsed.attachments[0].type).toBe("image");
       expect(parsed.attachments[1].type).toBe("video");
@@ -1431,7 +1429,7 @@ describe("MessengerAdapter", () => {
       expect(parsed.attachments[4].type).toBe("file");
     });
 
-    it("skips attachments without URL", () => {
+    it("skips attachments without URL", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent({
         message: {
@@ -1444,7 +1442,7 @@ describe("MessengerAdapter", () => {
         },
       });
 
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.attachments).toHaveLength(0);
     });
 
@@ -1474,7 +1472,7 @@ describe("MessengerAdapter", () => {
         },
       });
 
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       const attachment = parsed.attachments[0];
 
       const result = await attachment.fetchData?.();
@@ -1492,7 +1490,7 @@ describe("MessengerAdapter", () => {
         },
       });
 
-      const attachment = adapter.parseMessage(event).attachments[0];
+      const attachment = (await adapter.parseMessage(event)).attachments[0];
       mockFetch.mockResolvedValueOnce(new Response("secret", { status: 200 }));
 
       expect(attachment.url).toBe(url);
@@ -1500,7 +1498,7 @@ describe("MessengerAdapter", () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("maps location attachment type to file", () => {
+    it("maps location attachment type to file", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent({
         message: {
@@ -1514,12 +1512,12 @@ describe("MessengerAdapter", () => {
           ],
         },
       });
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.attachments).toHaveLength(1);
       expect(parsed.attachments[0].type).toBe("file");
     });
 
-    it("handles mix of attachments with and without URLs", () => {
+    it("handles mix of attachments with and without URLs", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent({
         message: {
@@ -1533,18 +1531,18 @@ describe("MessengerAdapter", () => {
           ],
         },
       });
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.attachments).toHaveLength(2);
       expect(parsed.attachments[0].type).toBe("image");
       expect(parsed.attachments[1].type).toBe("video");
     });
 
-    it("returns empty attachments when message has no attachments field", () => {
+    it("returns empty attachments when message has no attachments field", async () => {
       const adapter = createAdapter();
       const event = sampleMessagingEvent({
         message: { mid: "mid.noatt", text: "plain text" },
       });
-      const parsed = adapter.parseMessage(event);
+      const parsed = await adapter.parseMessage(event);
       expect(parsed.attachments).toEqual([]);
     });
   });
@@ -1559,7 +1557,7 @@ describe("MessengerAdapter", () => {
       await adapter.initialize(chat);
 
       for (let i = 1; i <= 5; i++) {
-        adapter.parseMessage({
+        await adapter.parseMessage({
           sender: { id: "USER_123" },
           recipient: { id: "PAGE_456" },
           timestamp: 1735689600000 + i * 1000,
@@ -1652,7 +1650,7 @@ describe("MessengerAdapter", () => {
         await adapter.initialize(chat);
 
         for (let i = 1; i <= count; i++) {
-          adapter.parseMessage({
+          await adapter.parseMessage({
             sender: { id: "USER_123" },
             recipient: { id: "PAGE_456" },
             timestamp: 1735689600000 + i * 1000,
@@ -1875,17 +1873,11 @@ describe("MessengerAdapter", () => {
   });
 
   describe("format conversion", () => {
-    it("renderFormatted converts AST to string", () => {
+    it("renderFormatted converts AST to string", async () => {
       const adapter = createAdapter();
-      const result = adapter.renderFormatted({
-        type: "root",
-        children: [
-          {
-            type: "paragraph",
-            children: [{ type: "text", value: "hello world" }],
-          },
-        ],
-      });
+      const result = await adapter.renderFormatted(
+        root([paragraph(["hello world"])])
+      );
       expect(result).toContain("hello world");
     });
   });
@@ -2169,25 +2161,29 @@ describe("inbound markdown parsing", () => {
 
     expect(status).toBe(200);
     expect(message?.text).toBe(body);
-    expect(message?.formatted).toEqual(parseMarkdown(body));
+    expect(message?.formatted).toEqual(await parseMarkdown(body));
   });
 
   it.each([
     ["unmatched emphasis markers", "*a".repeat(8192)],
-    ["deeply nested blockquotes", ">".repeat(6000)],
     ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
     ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-  ])("keeps an inbound message with %s as one text node", async (_name, body) => {
+  ])("parses an inbound message with %s", async (_name, body) => {
     const { status, message } = await dispatchText(body);
 
     expect(status).toBe(200);
     expect(message?.text).toBe(body);
-    expect(message?.formatted).toStrictEqual({
-      type: "root",
-      children: [
-        { type: "paragraph", children: [{ type: "text", value: body }] },
-      ],
-    });
+    expect(message?.formatted).toEqual(await parseMarkdown(body));
+    expect(() => JSON.stringify(message?.formatted)).not.toThrow();
+  });
+
+  it("keeps an inbound message with deeply nested blockquotes as one text node", async () => {
+    const body = ">".repeat(6000);
+    const { status, message } = await dispatchText(body);
+
+    expect(status).toBe(200);
+    expect(message?.text).toBe(body);
+    expect(message?.formatted).toStrictEqual(root([paragraph([body])]));
     expect(() => JSON.stringify(message?.formatted)).not.toThrow();
   });
 });

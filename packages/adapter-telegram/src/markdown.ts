@@ -11,15 +11,21 @@
  */
 
 import {
-  type AdapterPostableMessage,
   BaseFormatConverter,
   type Content,
+  getCodeLanguage,
+  getListStart,
+  getNodeAttributes,
+  getNodeChildren,
+  getNodeTag,
+  getNodeValue,
+  isCodeNode,
+  isLinkNode,
+  isListNode,
   isTableNode,
-  type Nodes,
   parseMarkdown,
   type Root,
   tableToAscii,
-  walkAst,
 } from "chat";
 
 // MarkdownV2 requires escaping these characters in normal text:
@@ -31,6 +37,8 @@ const CODE_BLOCK_SPECIAL_CHARS = /([`\\])/g;
 
 // Inside (...) of inline links, only ) and \ need escaping
 const LINK_URL_SPECIAL_CHARS = /([)\\])/g;
+
+const HEADING_TAG = /^h[1-6]$/;
 
 /**
  * How the adapter intends a message to be rendered.
@@ -300,163 +308,93 @@ function escapeLinkUrl(text: string): string {
   return text.replace(LINK_URL_SPECIAL_CHARS, "\\$1");
 }
 
+function codeBlock(code: string, lang = ""): string {
+  return `\`\`\`${lang}\n${escapeCodeBlock(code)}\n\`\`\``;
+}
+
+function renderChildren(node: Content, separator = ""): string {
+  return getNodeChildren(node).map(renderMarkdownV2).join(separator);
+}
+
 /**
- * Recursively render an mdast node as Telegram MarkdownV2 text.
+ * Recursively render a node as Telegram MarkdownV2 text.
  */
-function renderMarkdownV2(node: Nodes): string {
-  switch (node.type) {
-    case "root":
-      return node.children.map(renderMarkdownV2).join("\n\n");
+function renderMarkdownV2(node: Content): string {
+  if (typeof node === "string") {
+    return escapeMarkdownV2(node);
+  }
+  if (isCodeNode(node)) {
+    return codeBlock(getNodeValue(node), getCodeLanguage(node));
+  }
+  if (isTableNode(node)) {
+    // Telegram renders raw pipe syntax as garbled text.
+    return codeBlock(tableToAscii(node));
+  }
+  if (isLinkNode(node)) {
+    return `[${renderChildren(node)}](${escapeLinkUrl(node[1].href)})`;
+  }
+  if (isListNode(node)) {
+    const start = getListStart(node);
+    return getNodeChildren(node)
+      .map((item, i) => {
+        const content = renderChildren(item, "\n");
+        if (start !== undefined) {
+          return `${escapeMarkdownV2(`${start + i}.`)} ${content}`;
+        }
+        return `\\- ${content}`;
+      })
+      .join("\n");
+  }
 
-    case "paragraph":
-      return node.children.map(renderMarkdownV2).join("");
-
-    case "text":
-      return escapeMarkdownV2(node.value);
-
+  const tag = getNodeTag(node);
+  switch (tag) {
     case "strong":
-      return `*${node.children.map(renderMarkdownV2).join("")}*`;
+      return `*${renderChildren(node)}*`;
 
-    case "emphasis":
-      return `_${node.children.map(renderMarkdownV2).join("")}_`;
+    case "em":
+      return `_${renderChildren(node)}_`;
 
-    case "delete":
-      return `~${node.children.map(renderMarkdownV2).join("")}~`;
+    case "del":
+      return `~${renderChildren(node)}~`;
 
-    case "inlineCode":
-      return `\`${escapeCodeBlock(node.value)}\``;
+    case "code":
+      return `\`${escapeCodeBlock(getNodeValue(node))}\``;
 
-    case "code": {
-      const lang = node.lang ?? "";
-      const val = escapeCodeBlock(node.value);
-      return `\`\`\`${lang}\n${val}\n\`\`\``;
-    }
-
-    case "link": {
-      const linkText = node.children.map(renderMarkdownV2).join("");
-      const url = escapeLinkUrl(node.url);
-      return `[${linkText}](${url})`;
-    }
-
-    case "blockquote": {
-      const inner = node.children.map(renderMarkdownV2).join("\n");
-      return inner
+    case "blockquote":
+      return renderChildren(node, "\n")
         .split("\n")
         .map((line) => `>${line}`)
         .join("\n");
-    }
 
-    case "list":
-      return node.children
-        .map((item, i) => {
-          const content = item.children.map(renderMarkdownV2).join("\n");
-          if (node.ordered) {
-            return `${escapeMarkdownV2(`${(node.start ?? 1) + i}.`)} ${content}`;
-          }
-          return `\\- ${content}`;
-        })
-        .join("\n");
+    case "li":
+      return renderChildren(node, "\n");
 
-    case "listItem":
-      return node.children.map(renderMarkdownV2).join("\n");
-
-    case "heading": {
-      // Telegram has no heading syntax; render as bold
-      const text = node.children.map(renderMarkdownV2).join("");
-      return `*${text}*`;
-    }
-
-    case "thematicBreak":
+    case "hr":
       return escapeMarkdownV2("———");
 
-    case "break":
+    case "br":
       return "\n";
 
-    case "image": {
-      const alt = escapeMarkdownV2(node.alt ?? "");
-      const url = escapeLinkUrl(node.url);
-      return `[${alt}](${url})`;
+    case "img": {
+      const { alt = "", src = "" } = getNodeAttributes(node);
+      return `[${escapeMarkdownV2(String(alt))}](${escapeLinkUrl(String(src))})`;
     }
 
-    case "html":
-      // Telegram MarkdownV2 parser rejects raw HTML; escape so it renders literally.
-      return escapeMarkdownV2(node.value);
-
-    case "linkReference":
-    case "imageReference":
-      // Reference-style links/images lose their reference resolution here.
-      // Render the visible label as escaped text so nothing is dropped silently.
-      if ("children" in node && node.children.length > 0) {
-        return node.children.map(renderMarkdownV2).join("");
+    default:
+      // Telegram has no heading syntax; render as bold
+      if (tag && HEADING_TAG.test(tag)) {
+        return `*${renderChildren(node)}*`;
       }
-      return escapeMarkdownV2(node.label ?? node.identifier);
-
-    case "definition":
-      // Reference-link definitions have no visible output.
-      return "";
-
-    case "footnoteDefinition":
-      // Hidden — footnote bodies aren't rendered inline in chat.
-      return "";
-
-    case "footnoteReference":
-      // No footnotes UI in Telegram; surface the label so it's not dropped.
-      return escapeMarkdownV2(`[^${node.label ?? node.identifier}]`);
-
-    case "yaml":
-      // Frontmatter isn't visible in chat messages.
-      return "";
-
-    case "table":
-    case "tableRow":
-    case "tableCell":
-      // `fromAst` walks the AST and rewrites Table nodes to Code blocks before
-      // calling this renderer. A table arriving here means that preprocessing
-      // was skipped — a contract violation, not a rendering decision.
-      throw new Error(
-        `Telegram MarkdownV2 renderer received a ${node.type} node; fromAst should have preprocessed it into a code block.`
-      );
-
-    default: {
-      throw new Error(`Unhandled case: ${node satisfies never}`);
-    }
+      return renderChildren(node);
   }
 }
 
 export class TelegramFormatConverter extends BaseFormatConverter {
   fromAst(ast: Root): string {
-    // Check for table nodes and replace them with code blocks,
-    // since Telegram renders raw pipe syntax as garbled text.
-    const transformed = walkAst(structuredClone(ast), (node: Content) => {
-      if (isTableNode(node)) {
-        return {
-          type: "code" as const,
-          value: tableToAscii(node),
-          lang: undefined,
-        } as Content;
-      }
-      return node;
-    });
-    return renderMarkdownV2(transformed).trim();
+    return ast.nodes.map(renderMarkdownV2).join("\n\n").trim();
   }
 
-  toAst(text: string): Root {
+  toAst(text: string): Promise<Root> {
     return parseMarkdown(text);
-  }
-
-  override renderPostable(message: AdapterPostableMessage): string {
-    if (typeof message === "string") {
-      return message;
-    }
-    if ("raw" in message) {
-      return message.raw;
-    }
-    if ("markdown" in message) {
-      return this.fromMarkdown(message.markdown);
-    }
-    if ("ast" in message) {
-      return this.fromAst(message.ast);
-    }
-    return super.renderPostable(message);
   }
 }
