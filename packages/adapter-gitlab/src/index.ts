@@ -115,8 +115,7 @@ const INLINE_PARENT_TAGS = new Set([
   "th",
   "td",
 ]);
-const EXCLUDED_TAGS = new Set(["pre", "code", "blockquote"]);
-const LEAF_TAGS = new Set(["img", "hr"]);
+const OPAQUE_TAGS = new Set(["pre", "code", "blockquote", "img", "hr"]);
 
 /**
  * GitLab award emoji names for normalized emoji whose Slack-style shortcode
@@ -1523,28 +1522,24 @@ function mentionsUser(ast: Root, userName: string): boolean {
     `(?<!\\w)@${userName.replace(REGEX_SPECIAL_PATTERN, "\\$&")}(?![\\w-])`,
     "i"
   );
-  return pattern.test(mentionableText(ast));
+  return pattern.test(ast.nodes.map(mentionableText).join("\n"));
 }
 
-function mentionableText(ast: Root): string {
-  return ast.nodes.map(nodeMentionableText).join("\n");
-}
-
-function nodeMentionableText(node: Content): string {
+function mentionableText(node: Content): string {
   if (typeof node === "string") {
     return node;
   }
   const tag = getNodeTag(node);
-  // Excluded and opaque nodes still separate their neighbors, so `x![](i)@bot`
-  // or a hard line break before `@bot` still reads as a mention.
+  // Opaque nodes and hard breaks still separate their neighbors, so
+  // `x![](i)@bot` or a line break before `@bot` still reads as a mention.
   if (tag === "br") {
     return "\n";
   }
-  if (tag === undefined || EXCLUDED_TAGS.has(tag) || LEAF_TAGS.has(tag)) {
+  if (tag === undefined || OPAQUE_TAGS.has(tag)) {
     return " ";
   }
   const separator = INLINE_PARENT_TAGS.has(tag) ? "" : "\n";
-  return getNodeChildren(node).map(nodeMentionableText).join(separator);
+  return getNodeChildren(node).map(mentionableText).join(separator);
 }
 
 /**

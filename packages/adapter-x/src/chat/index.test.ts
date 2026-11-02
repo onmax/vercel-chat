@@ -116,47 +116,47 @@ function createTestAdapter(): XchatAdapter {
 }
 
 describe("conversationPathId", () => {
-  it("returns the other participant for hyphen 1:1 ids", async () => {
+  it("returns the other participant for hyphen 1:1 ids", () => {
     expect(conversationPathId(TEST_CONVERSATION_ID, TEST_USER_ID)).toBe(
       TEST_OTHER_USER_ID
     );
   });
 
-  it("returns the other participant for colon 1:1 ids", async () => {
+  it("returns the other participant for colon 1:1 ids", () => {
     expect(
       conversationPathId(TEST_CANONICAL_CONVERSATION_ID, TEST_USER_ID)
     ).toBe(TEST_OTHER_USER_ID);
   });
 
-  it("returns group ids unchanged", async () => {
+  it("returns group ids unchanged", () => {
     expect(conversationPathId("gABCDE", TEST_USER_ID)).toBe("gABCDE");
   });
 });
 
 describe("dashConversationId", () => {
-  it("dash-joins colon 1:1 ids", async () => {
+  it("dash-joins colon 1:1 ids", () => {
     expect(dashConversationId(TEST_CANONICAL_CONVERSATION_ID)).toBe(
       TEST_CONVERSATION_ID
     );
   });
 
-  it("keeps dash 1:1 ids unchanged", async () => {
+  it("keeps dash 1:1 ids unchanged", () => {
     expect(dashConversationId(TEST_CONVERSATION_ID)).toBe(TEST_CONVERSATION_ID);
   });
 
-  it("returns group ids unchanged", async () => {
+  it("returns group ids unchanged", () => {
     expect(dashConversationId("gABCDE")).toBe("gABCDE");
   });
 });
 
 describe("encodeThreadId", () => {
-  it("should encode a 1:1 conversation ID", async () => {
+  it("should encode a 1:1 conversation ID", () => {
     const adapter = createTestAdapter();
     const result = adapter.encodeThreadId({ conversationId: "12345-67890" });
     expect(result).toBe("xchat:12345-67890");
   });
 
-  it("should encode a group conversation ID", async () => {
+  it("should encode a group conversation ID", () => {
     const adapter = createTestAdapter();
     const result = adapter.encodeThreadId({ conversationId: "gABCDE" });
     expect(result).toBe("xchat:gABCDE");
@@ -164,26 +164,26 @@ describe("encodeThreadId", () => {
 });
 
 describe("decodeThreadId", () => {
-  it("should decode a valid 1:1 thread ID", async () => {
+  it("should decode a valid 1:1 thread ID", () => {
     const adapter = createTestAdapter();
     const result = adapter.decodeThreadId("xchat:12345-67890");
     expect(result).toEqual({ conversationId: "12345-67890" });
   });
 
-  it("should decode a valid group thread ID", async () => {
+  it("should decode a valid group thread ID", () => {
     const adapter = createTestAdapter();
     const result = adapter.decodeThreadId("xchat:gABCDE");
     expect(result).toEqual({ conversationId: "gABCDE" });
   });
 
-  it("should throw on invalid prefix", async () => {
+  it("should throw on invalid prefix", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("slack:C123:ts123")).toThrow(
       "Invalid XChat thread ID"
     );
   });
 
-  it("should throw on empty after prefix", async () => {
+  it("should throw on empty after prefix", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("xchat:")).toThrow(
       "Invalid XChat thread ID format"
@@ -192,19 +192,19 @@ describe("decodeThreadId", () => {
 });
 
 describe("isDM", () => {
-  it("should return true for 1:1 conversation", async () => {
+  it("should return true for 1:1 conversation", () => {
     const adapter = createTestAdapter();
     expect(adapter.isDM("xchat:12345-67890")).toBe(true);
   });
 
-  it("should return false for group conversation", async () => {
+  it("should return false for group conversation", () => {
     const adapter = createTestAdapter();
     expect(adapter.isDM("xchat:gABCDE")).toBe(false);
   });
 });
 
 describe("channelIdFromThreadId", () => {
-  it("should return the same thread ID", async () => {
+  it("should return the same thread ID", () => {
     const adapter = createTestAdapter();
     expect(adapter.channelIdFromThreadId("xchat:12345-67890")).toBe(
       "xchat:12345-67890"
@@ -314,7 +314,7 @@ describe("parseMessage inbound markdown bounds", () => {
     ["6,000 nested blockquotes", ">".repeat(6000)],
     ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
     ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-  ])("parses text with %s", async (_, body) => {
+  ])("keeps the text of a message with %s", async (_, body) => {
     const message = await createTestAdapter().parseMessage(rawWithText(body));
 
     expect(message.text).toBe(body);
@@ -1215,24 +1215,24 @@ describe("read receipts on delivery (real crypto)", () => {
 });
 
 describe("withChatSdkUserAgent", () => {
-  it("prepends the product token to the xdk client's default", async () => {
+  it("prepends the product token to the xdk client's default", () => {
     const ua = withChatSdkUserAgent("xdk-typescript/0.6.6");
     expect(ua).toMatch(CHAT_SDK_UA_TOKEN_RE);
     expect(ua.endsWith(" xdk-typescript/0.6.6")).toBe(true);
   });
 
-  it("stands alone when there is no existing User-Agent", async () => {
+  it("stands alone when there is no existing User-Agent", () => {
     expect(withChatSdkUserAgent(null)).toMatch(CHAT_SDK_UA_TOKEN_RE);
   });
 
-  it("does not stack tokens when applied twice", async () => {
+  it("does not stack tokens when applied twice", () => {
     const once = withChatSdkUserAgent("xdk-typescript/0.6.6");
     expect(withChatSdkUserAgent(once)).toBe(once);
   });
 });
 
 describe("detectEntities", () => {
-  it("detects URLs and mentions with correct spans", async () => {
+  it("detects URLs and mentions with correct spans", () => {
     const text = "hey @alice check https://example.com/x now";
     const entities = detectEntities(text);
     expect(entities).toEqual([
@@ -1243,18 +1243,18 @@ describe("detectEntities", () => {
     expect(text.slice(17, 38)).toBe("https://example.com/x");
   });
 
-  it("skips mentions inside detected URLs and emails", async () => {
+  it("skips mentions inside detected URLs and emails", () => {
     const entities = detectEntities("mail foo@bar.com or https://a.io/@baz");
     expect(entities?.every(([, , kind]) => kind === "url")).toBe(true);
   });
 
-  it("returns null when nothing matches", async () => {
+  it("returns null when nothing matches", () => {
     expect(detectEntities("plain text only")).toBeNull();
   });
 });
 
 describe("extractPostAttachments", () => {
-  it("extracts x.com post URLs as post cards, deduped by id", async () => {
+  it("extracts x.com post URLs as post cards, deduped by id", () => {
     const text =
       "see https://x.com/foo/status/123 and https://twitter.com/foo/status/123 and https://x.com/bar/status/456";
     expect(extractPostAttachments(text)).toEqual([
@@ -1271,7 +1271,7 @@ describe("extractPostAttachments", () => {
     ]);
   });
 
-  it("returns null when no post URLs are present", async () => {
+  it("returns null when no post URLs are present", () => {
     expect(extractPostAttachments("no posts here")).toBeNull();
   });
 });
@@ -1279,7 +1279,7 @@ describe("extractPostAttachments", () => {
 describe("mentionHandlesFromEntities", () => {
   const text = "hey @Test_Bot and @other";
 
-  it("extracts handles from snake_case entity spans", async () => {
+  it("extracts handles from snake_case entity spans", () => {
     const entities = [
       { start_index: 4, end_index: 13, content: { mention: {} } },
       { start_index: 18, end_index: 24, content: { mention: {} } },
@@ -1290,14 +1290,14 @@ describe("mentionHandlesFromEntities", () => {
     ]);
   });
 
-  it("extracts handles from camelCase entity spans", async () => {
+  it("extracts handles from camelCase entity spans", () => {
     const entities = [
       { startIndex: 4, endIndex: 13, content: { mention: {} } },
     ];
     expect(mentionHandlesFromEntities(text, entities)).toEqual(["test_bot"]);
   });
 
-  it("ignores non-mention entities", async () => {
+  it("ignores non-mention entities", () => {
     const entities = [{ start_index: 4, end_index: 13, content: { url: {} } }];
     expect(mentionHandlesFromEntities(text, entities)).toEqual([]);
   });
@@ -1411,7 +1411,7 @@ describe("parseMessage mention + attachment mapping", () => {
 });
 
 describe("extractMediaEntries", () => {
-  it("collects media from attachments, content, and mediaHashes without dupes", async () => {
+  it("collects media from attachments, content, and mediaHashes without dupes", () => {
     const entries = extractMediaEntries({
       type: "message",
       attachments: [

@@ -6,15 +6,15 @@ import {
 } from "./channel";
 
 describe("parseChannelMetadata", () => {
-  it("parses a plain object", async () => {
+  it("parses a plain object", () => {
     expect(parseChannelMetadata('{"type":"rcs"}')).toEqual({ type: "rcs" });
   });
 
-  it("rejects arrays", async () => {
+  it("rejects arrays", () => {
     expect(parseChannelMetadata('["rcs"]')).toBeUndefined();
   });
 
-  it("rejects null and invalid JSON", async () => {
+  it("rejects null and invalid JSON", () => {
     expect(parseChannelMetadata("null")).toBeUndefined();
     expect(parseChannelMetadata("not-json")).toBeUndefined();
     expect(parseChannelMetadata(undefined)).toBeUndefined();
@@ -22,7 +22,7 @@ describe("parseChannelMetadata", () => {
 });
 
 describe("resolveInboundThreadSender", () => {
-  it("keeps the phone sender for plain SMS routed through a messaging service", async () => {
+  it("keeps the phone sender for plain SMS routed through a messaging service", () => {
     // Twilio sends MessagingServiceSid on every inbound webhook for numbers
     // in a Messaging Service; SMS threads must stay keyed by phone number.
     expect(
@@ -33,7 +33,7 @@ describe("resolveInboundThreadSender", () => {
     ).toBe("+15550000001");
   });
 
-  it("uses the webhook MessagingServiceSid for inbound RCS metadata", async () => {
+  it("uses the webhook MessagingServiceSid for inbound RCS metadata", () => {
     expect(
       resolveInboundThreadSender({
         channelMetadata: { type: "rcs" },
@@ -43,7 +43,7 @@ describe("resolveInboundThreadSender", () => {
     ).toBe("MG123");
   });
 
-  it("keeps rcs: addresses as the thread sender", async () => {
+  it("keeps rcs: addresses as the thread sender", () => {
     expect(
       resolveInboundThreadSender({
         messagingServiceSid: "MG123",
@@ -52,7 +52,7 @@ describe("resolveInboundThreadSender", () => {
     ).toBe("rcs:brand_agent");
   });
 
-  it("uses configured messaging service for inbound RCS metadata", async () => {
+  it("uses configured messaging service for inbound RCS metadata", () => {
     expect(
       resolveInboundThreadSender({
         channelMetadata: { type: "rcs" },
@@ -62,7 +62,7 @@ describe("resolveInboundThreadSender", () => {
     ).toBe("MG123");
   });
 
-  it("uses configured rcsSenderId for inbound RCS metadata", async () => {
+  it("uses configured rcsSenderId for inbound RCS metadata", () => {
     expect(
       resolveInboundThreadSender({
         channelMetadata: { type: "rcs" },
@@ -72,7 +72,7 @@ describe("resolveInboundThreadSender", () => {
     ).toBe("rcs:brand_agent");
   });
 
-  it("keeps plain phone sender for non-RCS inbound", async () => {
+  it("keeps plain phone sender for non-RCS inbound", () => {
     expect(
       resolveInboundThreadSender({
         messagingServiceSidConfig: "MG123",
@@ -83,7 +83,7 @@ describe("resolveInboundThreadSender", () => {
 });
 
 describe("normalizeRcsSenderId", () => {
-  it("adds the rcs: prefix when missing", async () => {
+  it("adds the rcs: prefix when missing", () => {
     expect(normalizeRcsSenderId("brand_agent")).toBe("rcs:brand_agent");
     expect(normalizeRcsSenderId("rcs:brand_agent")).toBe("rcs:brand_agent");
   });

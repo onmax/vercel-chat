@@ -16,11 +16,11 @@ import {
 } from "./index";
 
 describe("TwilioAdapter", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     resetTwilioContentCacheForTests();
   });
 
-  it("uses the full DM thread id as its channel id", async () => {
+  it("uses the full DM thread id as its channel id", () => {
     // Encode/decode round-trips and pinned encoded strings live in the shared
     // `threadIdContract` at the bottom of this file; channelIdFromThreadId is
     // not covered by the contract, so it stays asserted here.
@@ -174,7 +174,7 @@ describe("TwilioAdapter", () => {
     });
   });
 
-  it("passes location attachments through rehydration untouched", async () => {
+  it("passes location attachments through rehydration untouched", () => {
     const adapter = createTwilioAdapter({
       accountSid: "AC123",
       authToken: "token",

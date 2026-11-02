@@ -130,8 +130,7 @@ export function splitText(
 /**
  * Trim whitespace from the text at the start or end of `node`, copying the
  * path to it. A split between inline nodes can leave a part starting or
- * ending with a space. Trimming only shortens a part, so it still fits. Code
- * keeps its whitespace.
+ * ending with a space. Trimming only shortens a part, so it still fits.
  *
  * Returns `null` when trimming empties the node. An empty paragraph, list
  * item, or blockquote renders a stray marker, so the parent drops it and

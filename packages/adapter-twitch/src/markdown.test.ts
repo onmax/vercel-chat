@@ -80,7 +80,7 @@ describe("TwitchFormatConverter tables", () => {
 });
 
 describe("toSingleLine", () => {
-  it("collapses line breaks and surrounding whitespace", async () => {
+  it("collapses line breaks and surrounding whitespace", () => {
     expect(toSingleLine("  one \n\n  two\nthree  ")).toBe("one two three");
   });
 });

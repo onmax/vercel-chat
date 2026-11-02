@@ -543,7 +543,7 @@ export class ChannelImpl<TState = Record<string, unknown>>
           type: "thread",
         });
         await adapter.editMessage(threadId, messageId, editPostable);
-        return await self.createSentMessage(messageId, editPostable, threadId);
+        return self.createSentMessage(messageId, editPostable, threadId);
       },
 
       async delete(): Promise<void> {

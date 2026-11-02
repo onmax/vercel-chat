@@ -99,35 +99,35 @@ describe("decodeThreadId", () => {
   // Valid decode + round-trip coverage lives in the shared `threadIdContract`
   // above; only the malformed-id and invalid-prefix errors it does not cover
   // are kept here.
-  it("should throw on invalid prefix", async () => {
+  it("should throw on invalid prefix", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("slack:C123:ts123")).toThrow(
       "Invalid WhatsApp thread ID"
     );
   });
 
-  it("should throw on empty after prefix", async () => {
+  it("should throw on empty after prefix", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("whatsapp:")).toThrow(
       "Invalid WhatsApp thread ID format"
     );
   });
 
-  it("should throw on missing userWaId", async () => {
+  it("should throw on missing userWaId", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("whatsapp:123456789:")).toThrow(
       "Invalid WhatsApp thread ID format"
     );
   });
 
-  it("should throw on completely wrong format", async () => {
+  it("should throw on completely wrong format", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("nonsense")).toThrow(
       "Invalid WhatsApp thread ID"
     );
   });
 
-  it("should throw on extra segments", async () => {
+  it("should throw on extra segments", () => {
     const adapter = createTestAdapter();
     expect(() => adapter.decodeThreadId("whatsapp:123:456:extra")).toThrow(
       "Invalid WhatsApp thread ID format"
@@ -136,7 +136,7 @@ describe("decodeThreadId", () => {
 });
 
 describe("channelIdFromThreadId", () => {
-  it("should return the full thread ID (channel === thread on WhatsApp)", async () => {
+  it("should return the full thread ID (channel === thread on WhatsApp)", () => {
     const adapter = createTestAdapter();
     const result = adapter.channelIdFromThreadId(
       "whatsapp:123456789:15551234567"
@@ -146,17 +146,17 @@ describe("channelIdFromThreadId", () => {
 });
 
 describe("isDM", () => {
-  it("should always return true", async () => {
+  it("should always return true", () => {
     const adapter = createTestAdapter();
     expect(adapter.isDM("whatsapp:123456789:15551234567")).toBe(true);
   });
 });
 
 describe("renderFormatted", () => {
-  it("should render markdown from AST", async () => {
+  it("should render markdown from AST", () => {
     const adapter = createTestAdapter();
     const ast = root([paragraph([text("Hello world")])]);
-    const result = await adapter.renderFormatted(ast);
+    const result = adapter.renderFormatted(ast);
     expect(result).toContain("Hello world");
   });
 });
@@ -710,18 +710,18 @@ describe("handleWebhook - verification challenge", () => {
 });
 
 describe("splitMessage", () => {
-  it("should return a single chunk for short messages", async () => {
+  it("should return a single chunk for short messages", () => {
     const result = splitMessage("Hello world");
     expect(result).toEqual(["Hello world"]);
   });
 
-  it("should return a single chunk for exactly 4096 chars", async () => {
+  it("should return a single chunk for exactly 4096 chars", () => {
     const text = "a".repeat(4096);
     const result = splitMessage(text);
     expect(result).toEqual([text]);
   });
 
-  it("should split on paragraph boundaries when possible", async () => {
+  it("should split on paragraph boundaries when possible", () => {
     const paragraph1 = "a".repeat(3000);
     const paragraph2 = "b".repeat(3000);
     const text = `${paragraph1}\n\n${paragraph2}`;
@@ -731,7 +731,7 @@ describe("splitMessage", () => {
     expect(result[1]).toBe(paragraph2);
   });
 
-  it("should split on line boundaries when no paragraph break", async () => {
+  it("should split on line boundaries when no paragraph break", () => {
     const line1 = "a".repeat(3000);
     const line2 = "b".repeat(3000);
     const text = `${line1}\n${line2}`;
@@ -741,7 +741,7 @@ describe("splitMessage", () => {
     expect(result[1]).toBe(line2);
   });
 
-  it("should hard-break when no line boundaries exist", async () => {
+  it("should hard-break when no line boundaries exist", () => {
     const text = "a".repeat(5000);
     const result = splitMessage(text);
     expect(result).toHaveLength(2);
@@ -749,7 +749,7 @@ describe("splitMessage", () => {
     expect(result[1]).toBe("a".repeat(904));
   });
 
-  it("should handle three chunks", async () => {
+  it("should handle three chunks", () => {
     const p1 = "a".repeat(4000);
     const p2 = "b".repeat(4000);
     const p3 = "c".repeat(4000);
@@ -761,7 +761,7 @@ describe("splitMessage", () => {
     expect(result[2]).toBe(p3);
   });
 
-  it("should not split on a break that is too early in the chunk", async () => {
+  it("should not split on a break that is too early in the chunk", () => {
     // A paragraph break at position 1000 (< 2048 = limit/2) should be skipped
     const earlyPart = "a".repeat(1000);
     const rest = "b".repeat(4500);
@@ -773,7 +773,7 @@ describe("splitMessage", () => {
     expect(result[1].length).toBe(text.length - 4096);
   });
 
-  it("should preserve all content across chunks", async () => {
+  it("should preserve all content across chunks", () => {
     const text = "x".repeat(10000);
     const result = splitMessage(text);
     expect(result.join("")).toBe(text);
@@ -2858,7 +2858,7 @@ describe("getWhatsAppMediaType", () => {
     ["video/3gpp", "video"],
     ["audio/mpeg", "audio"],
     ["application/pdf", "document"],
-  ] as const)("maps %s to %s", async (mimeType, expected) => {
+  ] as const)("maps %s to %s", (mimeType, expected) => {
     expect(getWhatsAppMediaType(mimeType)).toBe(expected);
   });
 });
@@ -3317,7 +3317,7 @@ describe("createWhatsAppAdapter", () => {
     WHATSAPP_VERIFY_TOKEN: "env-verify",
   };
 
-  it("throws when accessToken is missing", async () => {
+  it("throws when accessToken is missing", () => {
     expect(() =>
       createWhatsAppAdapter({
         appSecret: "secret",
@@ -3327,7 +3327,7 @@ describe("createWhatsAppAdapter", () => {
     ).toThrow(ACCESS_TOKEN_PATTERN);
   });
 
-  it("throws when appSecret is missing", async () => {
+  it("throws when appSecret is missing", () => {
     expect(() =>
       createWhatsAppAdapter({
         accessToken: "token",
@@ -3337,7 +3337,7 @@ describe("createWhatsAppAdapter", () => {
     ).toThrow(APP_SECRET_PATTERN);
   });
 
-  it("uses environment variables as fallback", async () => {
+  it("uses environment variables as fallback", () => {
     const originalEnv = { ...process.env };
     for (const [key, value] of Object.entries(requiredEnvVars)) {
       process.env[key] = value;
@@ -3357,7 +3357,7 @@ describe("createWhatsAppAdapter", () => {
     }
   });
 
-  it("uses apiUrl config to override base URL", async () => {
+  it("uses apiUrl config to override base URL", () => {
     const adapter = new WhatsAppAdapter({
       accessToken: "test-token",
       appSecret: "test-secret",
@@ -3372,7 +3372,7 @@ describe("createWhatsAppAdapter", () => {
     );
   });
 
-  it("uses WHATSAPP_API_URL env var via factory", async () => {
+  it("uses WHATSAPP_API_URL env var via factory", () => {
     const originalEnv = { ...process.env };
     for (const [key, value] of Object.entries(requiredEnvVars)) {
       process.env[key] = value;
@@ -3395,7 +3395,7 @@ describe("createWhatsAppAdapter", () => {
     }
   });
 
-  it("uses apiUrl with custom apiVersion", async () => {
+  it("uses apiUrl with custom apiVersion", () => {
     const adapter = new WhatsAppAdapter({
       accessToken: "test-token",
       appSecret: "test-secret",

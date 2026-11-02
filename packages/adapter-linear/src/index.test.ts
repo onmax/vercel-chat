@@ -5280,7 +5280,7 @@ describe("inbound markdown parsing", () => {
 
   it.each(
     pathologicalBodies
-  )("parses a comment with %s", async (_name, body) => {
+  )("keeps a comment with %s serializable", async (_name, body) => {
     const { status, message } = await dispatchComment(body);
 
     expect(status).toBe(200);

@@ -34,9 +34,9 @@ export class GitLabFormatConverter extends BaseFormatConverter {
   }
 
   /**
-   * Strings and markdown are posted as written. Round-tripping markdown through
-   * the markdown serializer would escape GitLab reference syntax (`~label` becomes
-   * `\~label`), which stops GitLab from linking it.
+   * Strings and markdown are posted as written. Round-tripping markdown would
+   * escape GitLab reference syntax (`~label` becomes `\~label`), which stops
+   * GitLab from linking it.
    */
   override async renderPostable(
     message: AdapterPostableMessage

@@ -162,7 +162,7 @@ describe("richTextBody", () => {
 
     it("clamps an indent deeper than any open parent", async () => {
       expect(
-        await (await render(event([list([section(text("a"))], { indent: 3 })])))
+        (await render(event([list([section(text("a"))], { indent: 3 })])))
           .mrkdwn
       ).toBe("- a");
     });

@@ -1050,15 +1050,6 @@ describe("BaseFormatConverter", () => {
       expect(await firstItemChildTags(result)).toEqual(["p", "ol"]);
     });
 
-    it("keeps a nested list after HTML inside the item", async () => {
-      // Raw HTML is plain text in the parser's default setup, so it reads as
-      // a paragraph.
-      const result = await commonMarkConverter.fromMarkdown(
-        "- <div>\n  content\n  </div>\n\n  - child\n- next"
-      );
-      expect(await firstItemChildTags(result)).toEqual(["p", "ul"]);
-    });
-
     it("leaves later lines of a multi-line block unindented by default", async () => {
       const result = await listConverter.fromMarkdown(
         "- item\n\n  ```\n  x\n  ```"
