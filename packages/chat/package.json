@@ -59,16 +59,10 @@
   "dependencies": {
     "@chat-adapter/catalog": "workspace:*",
     "@workflow/serde": "4.1.0-beta.2",
-    "mdast-util-to-string": "^4.0.0",
-    "remark-gfm": "^4.0.0",
-    "remark-parse": "^11.0.0",
-    "remark-stringify": "^11.0.0",
-    "remend": "^1.2.1",
-    "unified": "^11.0.5"
+    "comark": "https://pkg.pr.new/comark@237f314"
   },
   "devDependencies": {
     "@tanstack/ai": "0.54.0",
-    "@types/mdast": "^4.0.4",
     "@types/node": "^25.3.2",
     "ai": "^7.0.0",
     "es-module-lexer": "^2.3.0",

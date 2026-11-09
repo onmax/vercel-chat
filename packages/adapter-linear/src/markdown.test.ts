@@ -5,97 +5,67 @@ describe("LinearFormatConverter", () => {
   const converter = new LinearFormatConverter();
 
   describe("toAst", () => {
-    it("preserves formatting, links, code, and lists in inbound markdown", () => {
-      const ast = converter.toAst(
+    it("preserves formatting, links, code, and lists in inbound markdown", async () => {
+      const ast = await converter.toAst(
         "**bold** _italic_ [link](https://example.com)\n\n```ts\ncode\n```\n\n- ~~removed~~"
       );
-      expect(ast).toMatchObject({
-        type: "root",
-        children: [
-          {
-            type: "paragraph",
-            children: [
-              { type: "strong", children: [{ type: "text", value: "bold" }] },
-              { type: "text", value: " " },
-              {
-                type: "emphasis",
-                children: [{ type: "text", value: "italic" }],
-              },
-              { type: "text", value: " " },
-              {
-                type: "link",
-                url: "https://example.com",
-                children: [{ type: "text", value: "link" }],
-              },
-            ],
-          },
-          { type: "code", lang: "ts", value: "code" },
-          {
-            type: "list",
-            ordered: false,
-            children: [
-              {
-                type: "listItem",
-                children: [
-                  {
-                    type: "paragraph",
-                    children: [
-                      {
-                        type: "delete",
-                        children: [{ type: "text", value: "removed" }],
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
+      expect(ast.nodes).toEqual([
+        [
+          "p",
+          {},
+          ["strong", {}, "bold"],
+          " ",
+          ["em", {}, "italic"],
+          " ",
+          ["a", { href: "https://example.com" }, "link"],
         ],
-      });
+        ["pre", { language: "ts" }, ["code", { class: "language-ts" }, "code"]],
+        ["ul", {}, ["li", {}, ["p", {}, ["del", {}, "removed"]]]],
+      ]);
     });
   });
 
   describe("fromAst", () => {
-    it("should stringify a simple AST", () => {
-      const ast = converter.toAst("Hello world");
-      const result = converter.fromAst(ast);
+    it("should stringify a simple AST", async () => {
+      const ast = await converter.toAst("Hello world");
+      const result = await converter.fromAst(ast);
       expect(result).toContain("Hello world");
     });
 
-    it("should round-trip bold text", () => {
-      const ast = converter.toAst("**bold text**");
-      const result = converter.fromAst(ast);
+    it("should round-trip bold text", async () => {
+      const ast = await converter.toAst("**bold text**");
+      const result = await converter.fromAst(ast);
       expect(result).toContain("**bold text**");
     });
 
-    it("should round-trip links", () => {
-      const ast = converter.toAst("[Link](https://example.com)");
-      const result = converter.fromAst(ast);
+    it("should round-trip links", async () => {
+      const ast = await converter.toAst("[Link](https://example.com)");
+      const result = await converter.fromAst(ast);
       expect(result).toContain("[Link](https://example.com)");
     });
   });
 
   describe("renderPostable", () => {
-    it("should render a plain string", () => {
-      const result = converter.renderPostable("Hello world");
+    it("should render a plain string", async () => {
+      const result = await converter.renderPostable("Hello world");
       expect(result).toBe("Hello world");
     });
 
-    it("should render a raw message", () => {
-      const result = converter.renderPostable({ raw: "raw content" });
+    it("should render a raw message", async () => {
+      const result = await converter.renderPostable({ raw: "raw content" });
       expect(result).toBe("raw content");
     });
 
-    it("should render a markdown message", () => {
-      const result = converter.renderPostable({
+    it("should render a markdown message", async () => {
+      const result = await converter.renderPostable({
         markdown: "**bold** text",
       });
       expect(result).toContain("bold");
     });
 
-    it("should render an AST message", () => {
-      const ast = converter.toAst("Hello from AST");
-      const result = converter.renderPostable({ ast });
+    it("should render an AST message", async () => {
+      const ast = await converter.toAst("Hello from AST");
+      const result = await converter.renderPostable({ ast });
       expect(result).toContain("Hello from AST");
     });
   });

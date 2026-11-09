@@ -190,11 +190,11 @@ export class InstagramAdapter
     for (const entry of payload.entry) {
       for (const event of entry.messaging) {
         if (event.message?.is_echo) {
-          this.handleEcho(event, entry.id);
+          await this.handleEcho(event, entry.id);
         } else if (event.message?.quick_reply) {
           this.handleQuickReply(event, entry.id, options);
         } else if (event.message) {
-          this.handleIncomingMessage(event, entry.id, options);
+          await this.handleIncomingMessage(event, entry.id, options);
         }
 
         if (event.postback) {
@@ -256,11 +256,11 @@ export class InstagramAdapter
     }
   }
 
-  protected handleIncomingMessage(
+  protected async handleIncomingMessage(
     event: InstagramMessagingEvent,
     accountId: string,
     options?: WebhookOptions
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       return;
     }
@@ -268,20 +268,20 @@ export class InstagramAdapter
       accountId,
       recipientId: event.sender.id,
     });
-    const parsed = this.parseInstagramMessage(event, threadId);
+    const parsed = await this.parseInstagramMessage(event, threadId);
     this.cacheMessage(parsed);
     this.chat.processMessage(this, threadId, parsed, options);
   }
 
-  protected handleEcho(
+  protected async handleEcho(
     event: InstagramMessagingEvent,
     accountId: string
-  ): void {
+  ): Promise<void> {
     const threadId = this.encodeThreadId({
       accountId,
       recipientId: event.recipient.id,
     });
-    const parsed = this.parseInstagramMessage(event, threadId);
+    const parsed = await this.parseInstagramMessage(event, threadId);
     this.cacheMessage(parsed);
   }
 
@@ -401,7 +401,7 @@ export class InstagramAdapter
 
     const card = extractCard(message);
     if (card) {
-      const result = cardToInstagram(card);
+      const result = await cardToInstagram(card);
       if (result.type === "template") {
         return this.sendTemplateMessage(threadId, result.payload, options);
       }
@@ -421,7 +421,7 @@ export class InstagramAdapter
       }
     }
 
-    const text = this.renderPostableText(message);
+    const text = await this.renderPostableText(message);
     if (text.trim()) {
       return this.sendTextMessage(threadId, text, options);
     }
@@ -455,7 +455,7 @@ export class InstagramAdapter
       message: { text: truncated },
       ...this.deliveryFields(options),
     });
-    return this.buildSentMessage(threadId, result, { text: truncated });
+    return await this.buildSentMessage(threadId, result, { text: truncated });
   }
 
   protected async sendQuickReplies(
@@ -470,7 +470,7 @@ export class InstagramAdapter
       message: { text: truncated, quick_replies: quickReplies },
       ...this.deliveryFields(options),
     });
-    return this.buildSentMessage(threadId, result, { text: truncated });
+    return await this.buildSentMessage(threadId, result, { text: truncated });
   }
 
   protected async sendTemplateMessage(
@@ -487,7 +487,7 @@ export class InstagramAdapter
       },
       ...this.deliveryFields(options),
     });
-    return this.buildSentMessage(threadId, result);
+    return await this.buildSentMessage(threadId, result);
   }
 
   protected async sendMediaMessage(
@@ -502,7 +502,7 @@ export class InstagramAdapter
       message: { attachment: { type: media.type, payload } },
       ...this.deliveryFields(options),
     });
-    return this.buildSentMessage(threadId, result, {
+    return await this.buildSentMessage(threadId, result, {
       attachments: [{ type: media.type, payload }],
     });
   }
@@ -528,11 +528,11 @@ export class InstagramAdapter
     return { messaging_type: "RESPONSE" };
   }
 
-  protected buildSentMessage(
+  protected async buildSentMessage(
     threadId: string,
     result: InstagramSendApiResponse,
     message: Partial<NonNullable<InstagramMessagingEvent["message"]>> = {}
-  ): RawMessage<InstagramRawMessage> {
+  ): Promise<RawMessage<InstagramRawMessage>> {
     const { recipientId } = this.decodeThreadId(threadId);
     const raw: InstagramMessagingEvent = {
       sender: { id: this._botUserId },
@@ -540,7 +540,7 @@ export class InstagramAdapter
       timestamp: Date.now(),
       message: { mid: result.message_id, is_echo: true, ...message },
     };
-    this.cacheMessage(this.parseInstagramMessage(raw, threadId));
+    this.cacheMessage(await this.parseInstagramMessage(raw, threadId));
     return { id: result.message_id, threadId, raw };
   }
 
@@ -692,12 +692,14 @@ export class InstagramAdapter
     return { accountId: parts[1], recipientId: parts[2] };
   }
 
-  parseMessage(raw: InstagramRawMessage): Message<InstagramRawMessage> {
+  async parseMessage(
+    raw: InstagramRawMessage
+  ): Promise<Message<InstagramRawMessage>> {
     const isEcho = raw.message?.is_echo ?? false;
     const accountId = isEcho ? raw.sender.id : raw.recipient.id;
     const recipientId = isEcho ? raw.recipient.id : raw.sender.id;
     const threadId = this.encodeThreadId({ accountId, recipientId });
-    const parsed = this.parseInstagramMessage(raw, threadId);
+    const parsed = await this.parseInstagramMessage(raw, threadId);
     this.cacheMessage(parsed);
     return parsed;
   }
@@ -716,10 +718,10 @@ export class InstagramAdapter
     };
   }
 
-  protected parseInstagramMessage(
+  protected async parseInstagramMessage(
     event: InstagramMessagingEvent,
     threadId: string
-  ): Message<InstagramRawMessage> {
+  ): Promise<Message<InstagramRawMessage>> {
     const text = event.message?.text ?? event.postback?.title ?? "";
     const isEcho = event.message?.is_echo ?? false;
     const isMe = isEcho || event.sender.id === this._botUserId;
@@ -728,7 +730,7 @@ export class InstagramAdapter
         event.message?.mid ?? event.postback?.mid ?? `event:${event.timestamp}`,
       threadId,
       text,
-      formatted: this.formatConverter.parseIncoming(text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(text)).formatted,
       raw: event,
       author: {
         userId: event.sender.id,
@@ -788,7 +790,9 @@ export class InstagramAdapter
     return "file";
   }
 
-  protected renderPostableText(message: AdapterPostableMessage): string {
+  protected async renderPostableText(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

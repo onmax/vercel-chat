@@ -1,33 +1,17 @@
 /**
- * Markdown parsing and conversion utilities using unified/remark.
+ * Markdown parsing and conversion utilities using Comark.
  */
 
 import type {
-  Blockquote,
-  Code,
-  Content,
-  Delete,
-  Emphasis,
-  InlineCode,
-  Link,
-  List,
-  ListItem,
-  Paragraph,
-  Root,
-  Strong,
-  Table,
-  TableCell,
-  TableRow,
-  Text,
-} from "mdast";
-
-import { toString as mdastToString } from "mdast-util-to-string";
-import remarkGfm from "remark-gfm";
-import remarkParse from "remark-parse";
-import remarkStringify, {
-  type Options as MarkdownStringifyOptions,
-} from "remark-stringify";
-import { unified } from "unified";
+  ElementNode,
+  ElementNodeAttributes,
+  MarkdownDocument,
+  Node,
+  RenderMarkdownOptions,
+} from "comark";
+import { createMarkdownParser } from "comark/core";
+import linkify from "comark/plugins/linkify";
+import { renderMarkdown } from "comark/render";
 import type { CardChild, CardElement, ChartElement } from "./cards";
 import type { AdapterPostableMessage } from "./types";
 
@@ -36,131 +20,107 @@ type PostableMessageInput = AdapterPostableMessage;
 
 const LINE_BREAK_REGEX = /\r\n|\r|\n/;
 
-// Re-export types for adapters
-export type {
-  Blockquote,
-  Code,
-  Content,
-  Delete,
-  Emphasis,
-  InlineCode,
-  Link,
-  List,
-  ListItem,
-  Nodes,
-  Paragraph,
-  Root,
-  Strong,
-  Table,
-  TableCell,
-  TableRow,
-  Text,
-} from "mdast";
+type Element<TTag extends string, TAttributes = ElementNodeAttributes> = [
+  TTag,
+  TAttributes & ElementNodeAttributes,
+  ...Node[],
+];
+
+/** The parsed document. Its `nodes` are the top-level blocks. */
+export type Root = MarkdownDocument;
+/** Any node: a string for text, a `[tag, attributes, ...children]` tuple for an element. */
+export type Content = Node;
+export type Nodes = Node;
+export type Text = string;
+export type Paragraph = Element<"p">;
+export type Strong = Element<"strong">;
+export type Emphasis = Element<"em">;
+export type Delete = Element<"del">;
+export type InlineCode = Element<"code">;
+export type Code = Element<"pre", { language?: string }>;
+export type Link = Element<"a", { href: string; title?: string }>;
+export type Blockquote = Element<"blockquote">;
+export type List = Element<"ul"> | Element<"ol", { start?: string }>;
+export type ListItem = Element<"li">;
+export type Table = Element<"table">;
+export type TableRow = Element<"tr">;
+export type TableCell = Element<"th" | "td">;
 
 // ============================================================================
-// Type Guards for mdast nodes
+// Type guards and accessors
 // ============================================================================
 
-/**
- * Type guard for text nodes.
- */
+/** The tag of an element node, or `undefined` for text and comments. */
+export function getNodeTag(node: Content): string | undefined {
+  return Array.isArray(node) && node[0] !== null ? node[0] : undefined;
+}
+
+function hasTag<T extends ElementNode>(...tags: string[]) {
+  return (node: Content): node is T => tags.includes(getNodeTag(node) ?? "");
+}
+
 export function isTextNode(node: Content): node is Text {
-  return node.type === "text";
+  return typeof node === "string";
+}
+
+export const isParagraphNode = hasTag<Paragraph>("p");
+export const isStrongNode = hasTag<Strong>("strong");
+export const isEmphasisNode = hasTag<Emphasis>("em");
+export const isDeleteNode = hasTag<Delete>("del");
+export const isInlineCodeNode = hasTag<InlineCode>("code");
+export const isCodeNode = hasTag<Code>("pre");
+export const isLinkNode = hasTag<Link>("a");
+export const isBlockquoteNode = hasTag<Blockquote>("blockquote");
+export const isListNode = hasTag<List>("ul", "ol");
+export const isListItemNode = hasTag<ListItem>("li");
+export const isTableNode = hasTag<Table>("table");
+export const isTableRowNode = hasTag<TableRow>("tr");
+export const isTableCellNode = hasTag<TableCell>("th", "td");
+
+/** Children of an element node. Empty for text and comments. */
+export function getNodeChildren(node: Content): Content[] {
+  return getNodeTag(node) === undefined
+    ? []
+    : ((node as ElementNode).slice(2) as Content[]);
+}
+
+/** Attributes of an element node. Empty for text and comments. */
+export function getNodeAttributes(node: Content): ElementNodeAttributes {
+  return getNodeTag(node) === undefined ? {} : (node as ElementNode)[1];
 }
 
 /**
- * Type guard for paragraph nodes.
+ * Text of a leaf: the string itself for text, the code for inline code and
+ * code blocks. Empty for other nodes.
  */
-export function isParagraphNode(node: Content): node is Paragraph {
-  return node.type === "paragraph";
+export function getNodeValue(node: Content): string {
+  if (typeof node === "string") {
+    return node;
+  }
+  if (isInlineCodeNode(node) || isCodeNode(node)) {
+    return toPlainText(root(getNodeChildren(node)));
+  }
+  return "";
+}
+
+/** Language of a code block, if it has one. */
+export function getCodeLanguage(node: Code): string | undefined {
+  return node[1].language || undefined;
+}
+
+/** Start number of an ordered list, or `undefined` for an unordered one. */
+export function getListStart(node: List): number | undefined {
+  return node[0] === "ol" ? Number(node[1].start ?? 1) : undefined;
+}
+
+function tableRows(node: Content): TableRow[] {
+  return getNodeChildren(node).flatMap((child) =>
+    isTableRowNode(child) ? [child] : tableRows(child)
+  );
 }
 
 /**
- * Type guard for strong (bold) nodes.
- */
-export function isStrongNode(node: Content): node is Strong {
-  return node.type === "strong";
-}
-
-/**
- * Type guard for emphasis (italic) nodes.
- */
-export function isEmphasisNode(node: Content): node is Emphasis {
-  return node.type === "emphasis";
-}
-
-/**
- * Type guard for delete (strikethrough) nodes.
- */
-export function isDeleteNode(node: Content): node is Delete {
-  return node.type === "delete";
-}
-
-/**
- * Type guard for inline code nodes.
- */
-export function isInlineCodeNode(node: Content): node is InlineCode {
-  return node.type === "inlineCode";
-}
-
-/**
- * Type guard for code block nodes.
- */
-export function isCodeNode(node: Content): node is Code {
-  return node.type === "code";
-}
-
-/**
- * Type guard for link nodes.
- */
-export function isLinkNode(node: Content): node is Link {
-  return node.type === "link";
-}
-
-/**
- * Type guard for blockquote nodes.
- */
-export function isBlockquoteNode(node: Content): node is Blockquote {
-  return node.type === "blockquote";
-}
-
-/**
- * Type guard for list nodes.
- */
-export function isListNode(node: Content): node is List {
-  return node.type === "list";
-}
-
-/**
- * Type guard for list item nodes.
- */
-export function isListItemNode(node: Content): node is ListItem {
-  return node.type === "listItem";
-}
-
-/**
- * Type guard for table nodes.
- */
-export function isTableNode(node: Content): node is Table {
-  return node.type === "table";
-}
-
-/**
- * Type guard for table row nodes.
- */
-export function isTableRowNode(node: Content): node is TableRow {
-  return node.type === "tableRow";
-}
-
-/**
- * Type guard for table cell nodes.
- */
-export function isTableCellNode(node: Content): node is TableCell {
-  return node.type === "tableCell";
-}
-
-/**
- * Render an mdast table node as a padded ASCII table string.
+ * Render a table node as a padded ASCII table string.
  *
  * Produces output like:
  * ```
@@ -173,23 +133,13 @@ export function isTableCellNode(node: Content): node is TableCell {
  * Shared by adapters that lack native table support (Slack, GChat, Discord, Telegram).
  */
 export function tableToAscii(node: Table): string {
-  const rows: string[][] = [];
-
-  for (const row of node.children) {
-    const cells: string[] = [];
-    for (const cell of row.children) {
-      cells.push(mdastToString(cell));
-    }
-    rows.push(cells);
-  }
-
+  const rows = tableRows(node).map((row) =>
+    getNodeChildren(row).map((cell) => plainTextNode(cell))
+  );
   if (rows.length === 0) {
     return "";
   }
-
-  const headers = rows[0];
-  const dataRows = rows.slice(1);
-  return tableElementToAscii(headers, dataRows);
+  return tableElementToAscii(rows[0], rows.slice(1));
 }
 
 /**
@@ -260,33 +210,6 @@ export function chartElementToFallbackText(element: ChartElement): string {
   return `${title}\n${tableElementToAscii(headers, rows)}`;
 }
 
-// ============================================================================
-// Helper functions for accessing node properties type-safely
-// ============================================================================
-
-/**
- * Get children from a content node that has children.
- * Returns empty array for nodes without children.
- * This eliminates the need for `as Content` casts in adapter converters.
- */
-export function getNodeChildren(node: Content): Content[] {
-  if ("children" in node && Array.isArray(node.children)) {
-    return node.children as Content[];
-  }
-  return [];
-}
-
-/**
- * Get value from a content node that has a value property.
- * Returns empty string for nodes without value.
- */
-export function getNodeValue(node: Content): string {
-  if ("value" in node && typeof node.value === "string") {
-    return node.value;
-  }
-  return "";
-}
-
 /**
  * Default maximum length of inbound message text that
  * `BaseFormatConverter.parseIncoming` parses as markdown.
@@ -294,208 +217,57 @@ export function getNodeValue(node: Content): string {
 export const DEFAULT_MAX_INCOMING_PARSE_LENGTH = 16_384;
 
 /**
- * Default maximum number of `*`, `_`, and `~` characters in inbound text that
- * `BaseFormatConverter.parseIncoming` parses as markdown. Resolving unmatched
- * emphasis delimiters within one paragraph takes quadratic time.
- */
-const DEFAULT_MAX_INCOMING_EMPHASIS_MARKERS = 2048;
-
-/**
- * Default maximum number of `]` characters in inbound text that
- * `BaseFormatConverter.parseIncoming` parses as markdown. Resolving each link
- * label end scans back over the inline content before it.
- */
-const DEFAULT_MAX_INCOMING_CLOSING_BRACKETS = 128;
-
-/**
- * Default maximum number of `<` characters in inbound text that
- * `BaseFormatConverter.parseIncoming` parses as markdown. Each unclosed inline
- * HTML construct scans ahead over the rest of the paragraph.
- */
-const DEFAULT_MAX_INCOMING_ANGLE_BRACKETS = 512;
-
-/**
- * Default maximum number of `www.` autolink literals in one run of
- * non-whitespace characters of inbound text that
- * `BaseFormatConverter.parseIncoming` parses as markdown. Each one scans ahead
- * over the rest of its run.
- */
-const DEFAULT_MAX_INCOMING_WWW_AUTOLINKS = 8;
-
-/**
- * Default maximum container nesting on one line of inbound text that
- * `BaseFormatConverter.parseIncoming` parses as markdown, counting blockquote,
- * list, and footnote definition markers plus half the columns of leading
- * indentation. Parsing a line costs time quadratic in the containers it opens.
- */
-const DEFAULT_MAX_INCOMING_CONTAINER_MARKERS = 32;
-
-const LINE_ENDING_PATTERN = /\r\n|\r|\n/;
-const FENCE_SKIP_DISABLED_PATTERN = /^ {0,3}<|^ {1,3}(?:`{3,}|~{3,})/m;
-const FENCE_OPEN_PATTERN = /^(`{3,}|~{3,})/;
-const FENCE_CLOSE_PATTERN = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
-const WWW_AUTOLINK_PATTERN = /www\./gi;
-const WHITESPACE_PATTERN = /\s+/;
-
-/**
  * Default maximum nesting depth of an AST built by
  * `BaseFormatConverter.parseIncoming`. Recursive serializers such as
  * `JSON.stringify` overflow the stack on trees a few thousand levels deep.
+ * The parser stops at 100 levels of block nesting and drops the rest of the
+ * document, so a tree that reaches 100 levels may be cut short and is kept
+ * as text instead.
  */
-const DEFAULT_MAX_INCOMING_AST_DEPTH = 128;
-
-function countChars(value: string, chars: string): number {
-  let count = 0;
-  for (const char of value) {
-    if (chars.includes(char)) {
-      count++;
-    }
-  }
-  return count;
-}
-
-function isBlank(char: string | undefined): boolean {
-  return char === undefined || char === " " || char === "\t";
-}
-
-function leadingColumns(line: string): number {
-  let columns = 0;
-  for (const char of line) {
-    if (char === " ") {
-      columns++;
-    } else if (char === "\t") {
-      columns += 4 - (columns % 4);
-    } else {
-      break;
-    }
-  }
-  return columns;
-}
-
-/**
- * Count the blockquote, list, and footnote definition markers that open
- * containers at the start of a line, such as the three in `> - 1. item`.
- */
-function countContainerMarkers(line: string): number {
-  let count = 0;
-  let i = 0;
-  while (i < line.length) {
-    while (line[i] === " " || line[i] === "\t") {
-      i++;
-    }
-    const char = line[i];
-    if (char === ">") {
-      i++;
-    } else if (
-      (char === "-" || char === "+" || char === "*") &&
-      isBlank(line[i + 1])
-    ) {
-      i += 2;
-    } else if (char === "[" && line[i + 1] === "^") {
-      const labelEnd = line.indexOf("]", i + 2);
-      if (labelEnd === -1 || line[labelEnd + 1] !== ":") {
-        return count;
-      }
-      i = labelEnd + 2;
-    } else {
-      let digits = 0;
-      while (
-        digits < 10 &&
-        line[i + digits] >= "0" &&
-        line[i + digits] <= "9"
-      ) {
-        digits++;
-      }
-      const delimiter = line[i + digits];
-      if (
-        digits === 0 ||
-        digits > 9 ||
-        !(delimiter === "." || delimiter === ")") ||
-        !isBlank(line[i + digits + 1])
-      ) {
-        return count;
-      }
-      i += digits + 2;
-    }
-    count++;
-  }
-  return count;
-}
-
-/**
- * The marker that closes a fenced code block opened by `line`, if `line`
- * opens one at the top level. Only fences at column zero count, since an
- * indented fence may belong to a container that ends before its closing fence.
- * Callers don't skip fences at all when any opener or closer is indented,
- * since a column-zero line could then close a fence instead of opening one.
- */
-function fenceOpener(line: string): string | undefined {
-  const marker = FENCE_OPEN_PATTERN.exec(line)?.[1];
-  if (marker?.startsWith("`") && line.slice(marker.length).includes("`")) {
-    return;
-  }
-  return marker;
-}
-
-function exceedsWwwAutolinksPerWord(line: string, max: number): boolean {
-  for (const word of line.split(WHITESPACE_PATTERN)) {
-    if ((word.match(WWW_AUTOLINK_PATTERN)?.length ?? 0) > max) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function closesFence(line: string, opener: string): boolean {
-  const marker = FENCE_CLOSE_PATTERN.exec(line)?.[1];
-  return (
-    marker !== undefined &&
-    marker[0] === opener[0] &&
-    marker.length >= opener.length
-  );
-}
+const DEFAULT_MAX_INCOMING_AST_DEPTH = 99;
 
 function exceedsDepth(ast: Root, max: number): boolean {
-  const stack: [Root | Content, number][] = [[ast, 0]];
+  const stack: [Content, number][] = ast.nodes.map((node) => [node, 1]);
   let entry = stack.pop();
   while (entry) {
     const [node, depth] = entry;
     if (depth > max) {
       return true;
     }
-    if ("children" in node) {
-      for (const child of node.children) {
-        stack.push([child as Content, depth + 1]);
-      }
+    for (const child of getNodeChildren(node)) {
+      stack.push([child, depth + 1]);
     }
     entry = stack.pop();
   }
   return false;
 }
 
+// Comark's own syntax (components, attributes, raw HTML) is off, so `{x}` and
+// `::x` in a chat message stay text. Incoming text is complete, so nothing is
+// auto-closed, and list items keep their paragraphs, as in CommonMark.
+const parser = createMarkdownParser({
+  autoUnwrap: false,
+  headingIds: false,
+  plugins: [linkify()],
+});
+
 /**
  * Parse markdown string into an AST.
  * Supports GFM (GitHub Flavored Markdown) for strikethrough, tables, etc.
  */
-export function parseMarkdown(markdown: string): Root {
-  const processor = unified().use(remarkParse).use(remarkGfm);
-  return processor.parse(markdown);
+export function parseMarkdown(markdown: string): Promise<Root> {
+  return parser(markdown);
 }
 
 /**
  * Options for stringifyMarkdown.
  */
 export interface StringifyOptions {
-  /** Bullet character for unordered lists. Default: `'*'` */
-  bullet?: "*" | "-" | "+";
-  /** Emphasis marker character. Default: `'*'` */
-  emphasis?: "*" | "_";
   /**
-   * Custom serializers keyed by mdast node type. Each replaces the default
-   * serializer for that node type and is responsible for its own escaping.
-   * Set `peek` on a handler that wraps its content in a marker.
+   * Custom serializers keyed by tag. Each replaces the default serializer
+   * for that tag and is responsible for its own escaping.
    */
-  handlers?: MarkdownStringifyOptions["handlers"];
+  handlers?: RenderMarkdownOptions["components"];
 }
 
 /**
@@ -504,69 +276,49 @@ export interface StringifyOptions {
 export function stringifyMarkdown(
   ast: Root,
   options?: StringifyOptions
-): string {
-  const processor = unified().use(remarkStringify, options).use(remarkGfm);
-  return processor.stringify(ast);
-}
-
-function nodeValue(node: Content | Root): string | null {
-  if ("value" in node && typeof node.value === "string") {
-    return node.value;
-  }
-  if ("alt" in node && typeof node.alt === "string") {
-    return node.alt;
-  }
-  return null;
+): Promise<string> {
+  return renderMarkdown(ast, { components: options?.handlers });
 }
 
 function childPlainText(
-  node: Content | Root,
+  node: Content,
   separator: string,
   keepEmpty = false
 ): string {
-  if (!("children" in node && Array.isArray(node.children))) {
-    return "";
-  }
-
-  const texts = (node.children as (Content | Root)[]).map((child) =>
-    plainTextNode(child)
-  );
+  const texts = getNodeChildren(node).map(plainTextNode);
   return (keepEmpty ? texts : texts.filter((text) => text.length > 0)).join(
     separator
   );
 }
 
-function plainTextNode(node: Content | Root): string {
-  const value = nodeValue(node);
-  if (value !== null) {
-    return value;
+function plainTextNode(node: Content): string {
+  if (typeof node === "string") {
+    return node;
   }
-
-  switch (node.type) {
-    case "root":
-      return childPlainText(node, "\n\n");
-    case "list":
-      return childPlainText(node, "\n");
-    case "table": {
-      // Drop rows with no content (e.g. a placeholder header row) but keep
-      // rows that have any populated cell.
-      const rows = (node.children as Content[]).map((child) =>
-        plainTextNode(child)
-      );
-      return rows.filter((row) => row.trim().length > 0).join("\n");
-    }
-    case "listItem":
+  switch (getNodeTag(node)) {
+    case undefined:
+      return "";
+    case "img":
+      return String(getNodeAttributes(node).alt ?? "");
+    case "ul":
+    case "ol":
+    case "li":
     case "blockquote":
       return childPlainText(node, "\n");
-    case "tableRow":
+    case "table":
+    case "thead":
+    case "tbody":
+      // Drop rows with no content (e.g. a placeholder header row) but keep
+      // rows that have any populated cell.
+      return tableRows(node)
+        .map(plainTextNode)
+        .filter((row) => row.trim().length > 0)
+        .join("\n");
+    case "tr":
       // Keep empty cells so columns stay aligned in the tab-separated output
       return childPlainText(node, "\t", true);
-    case "break":
+    case "br":
       return "\n";
-    case "thematicBreak":
-      return "";
-    case "tableCell":
-      return childPlainText(node, "");
     default:
       return childPlainText(node, "");
   }
@@ -576,15 +328,17 @@ function plainTextNode(node: Content | Root): string {
  * Extract plain text from an AST (strips all formatting).
  */
 export function toPlainText(ast: Root): string {
-  return plainTextNode(ast);
+  return ast.nodes
+    .map(plainTextNode)
+    .filter((text) => text.length > 0)
+    .join("\n\n");
 }
 
 /**
  * Extract plain text from a markdown string.
  */
-export function markdownToPlainText(markdown: string): string {
-  const ast = parseMarkdown(markdown);
-  return toPlainText(ast);
+export async function markdownToPlainText(markdown: string): Promise<string> {
+  return toPlainText(await parseMarkdown(markdown));
 }
 
 /**
@@ -594,94 +348,104 @@ export function walkAst<T extends Content | Root>(
   node: T,
   visitor: (node: Content) => Content | null
 ): T {
-  if ("children" in node && Array.isArray(node.children)) {
-    node.children = node.children
-      .map((child) => {
-        const result = visitor(child as Content);
-        if (result === null) {
-          return null;
-        }
-        return walkAst(result, visitor);
-      })
-      .filter((n): n is Content => n !== null);
+  const walk = (children: Content[]): Content[] =>
+    children.flatMap((child) => {
+      const result = visitor(child);
+      if (result === null) {
+        return [];
+      }
+      if (getNodeTag(result) === undefined) {
+        return [result];
+      }
+      const [tag, attributes, ...rest] = result as ElementNode;
+      return [[tag, attributes, ...walk(rest)] as ElementNode];
+    });
+  if (!Array.isArray(node) && typeof node === "object") {
+    return { ...node, nodes: walk((node as Root).nodes) };
   }
-  return node;
+  return walk([node as Content])[0] as T;
 }
 
 /**
  * Create a text node.
  */
 export function text(value: string): Text {
-  return { type: "text", value };
+  return value;
 }
 
 /**
  * Create a strong (bold) node.
  */
 export function strong(children: Content[]): Strong {
-  return { type: "strong", children: children as Strong["children"] };
+  return ["strong", {}, ...children];
 }
 
 /**
  * Create an emphasis (italic) node.
  */
 export function emphasis(children: Content[]): Emphasis {
-  return { type: "emphasis", children: children as Emphasis["children"] };
+  return ["em", {}, ...children];
 }
 
 /**
  * Create a delete (strikethrough) node.
  */
 export function strikethrough(children: Content[]): Delete {
-  return { type: "delete", children: children as Delete["children"] };
+  return ["del", {}, ...children];
 }
 
 /**
  * Create an inline code node.
  */
 export function inlineCode(value: string): InlineCode {
-  return { type: "inlineCode", value };
+  return ["code", {}, value];
 }
 
 /**
  * Create a code block node.
  */
 export function codeBlock(value: string, lang?: string): Code {
-  return { type: "code", value, lang };
+  return lang
+    ? [
+        "pre",
+        { language: lang },
+        ["code", { class: `language-${lang}` }, value],
+      ]
+    : ["pre", {}, ["code", {}, value]];
 }
 
 /**
  * Create a link node.
  */
 export function link(url: string, children: Content[], title?: string): Link {
-  return { type: "link", url, children: children as Link["children"], title };
+  return ["a", title ? { href: url, title } : { href: url }, ...children];
 }
 
 /**
  * Create a blockquote node.
  */
 export function blockquote(children: Content[]): Blockquote {
-  return { type: "blockquote", children: children as Blockquote["children"] };
+  return ["blockquote", {}, ...children];
 }
 
 /**
  * Create a paragraph node.
  */
 export function paragraph(children: Content[]): Paragraph {
-  return { type: "paragraph", children: children as Paragraph["children"] };
+  return ["p", {}, ...children];
 }
 
 /**
  * Create a root node (top-level AST container).
  */
 export function root(children: Content[]): Root {
-  return { type: "root", children: children as Root["children"] };
+  return { nodes: children, frontmatter: {}, meta: {} };
 }
 
 /**
  * Interface for platform-specific format converters.
  *
- * The AST (mdast Root) is the canonical representation.
+ * The AST (Comark document) is the canonical representation.
  * All conversions go through the AST:
  *
  *   Platform Format <-> AST <-> Markdown String
@@ -694,18 +458,18 @@ export interface FormatConverter {
    * Extract plain text from platform format.
    * Convenience method - default implementation uses toAst + toPlainText.
    */
-  extractPlainText(platformText: string): string;
+  extractPlainText(platformText: string): Promise<string>;
   /**
    * Render an AST to the platform's native format.
    * This is the primary method used when sending messages.
    */
-  fromAst(ast: Root): string;
+  fromAst(ast: Root): string | Promise<string>;
 
   /**
    * Parse platform's native format into an AST.
    * This is the primary method used when receiving messages.
    */
-  toAst(platformText: string): Root;
+  toAst(platformText: string): Promise<Root>;
 }
 
 /**
@@ -713,17 +477,17 @@ export interface FormatConverter {
  */
 export interface MarkdownConverter extends FormatConverter {
   // Convenience methods for markdown string I/O
-  fromMarkdown(markdown: string): string;
-  toMarkdown(platformText: string): string;
-  toPlainText(platformText: string): string;
+  fromMarkdown(markdown: string): Promise<string>;
+  toMarkdown(platformText: string): Promise<string>;
+  toPlainText(platformText: string): Promise<string>;
 }
 
 /**
  * Base class for format converters with default implementations.
  */
 export abstract class BaseFormatConverter implements FormatConverter {
-  abstract fromAst(ast: Root): string;
-  abstract toAst(platformText: string): Root;
+  abstract fromAst(ast: Root): string | Promise<string>;
+  abstract toAst(platformText: string): Promise<Root>;
 
   /**
    * Whether `renderList` indents every line of a multi-line block in a list
@@ -753,10 +517,10 @@ export abstract class BaseFormatConverter implements FormatConverter {
     nodeConverter: (node: Content) => string,
     unorderedBullet: string
   ): string[] {
-    const start = node.start ?? 1;
+    const start = getListStart(node);
     const lines: string[] = [];
     for (const [i, item] of getNodeChildren(node).entries()) {
-      const prefix = node.ordered ? `${start + i}.` : unorderedBullet;
+      const prefix = start === undefined ? unorderedBullet : `${start + i}.`;
       const marker = `${indent}${prefix} `;
       // Content after the marker starts at this column, so "1. " needs
       // three spaces for a nested list to stay inside the item.
@@ -774,13 +538,9 @@ export abstract class BaseFormatConverter implements FormatConverter {
             continue;
           }
           if (previous) {
-            // A nested list can follow its parent's text directly, except
-            // after HTML, or when it is ordered and doesn't start at 1,
-            // because then it can't interrupt a paragraph.
-            const canInterrupt =
-              previous.type !== "html" &&
-              (!child.ordered || (child.start ?? 1) === 1);
-            if (!canInterrupt) {
+            // An ordered list that doesn't start at 1 can't interrupt a
+            // paragraph, so it needs a blank line before it.
+            if ((getListStart(child) ?? 1) !== 1) {
               lines.push("");
             }
             lines.push(...nested);
@@ -816,7 +576,7 @@ export abstract class BaseFormatConverter implements FormatConverter {
   }
 
   /**
-   * Default fallback for converting an unknown mdast node to text.
+   * Default fallback for converting an unknown node to text.
    * Recursively converts children if present, otherwise extracts the node value.
    * Adapters should call this in their nodeToX() default case.
    */
@@ -844,62 +604,20 @@ export abstract class BaseFormatConverter implements FormatConverter {
     ast: Root,
     nodeConverter: (node: Content) => string
   ): string {
-    const parts: string[] = [];
-    for (const node of ast.children) {
-      parts.push(nodeConverter(node as Content));
-    }
-    return parts.join("\n\n");
+    return ast.nodes.map(nodeConverter).join("\n\n");
   }
 
-  extractPlainText(platformText: string): string {
-    return toPlainText(this.toAst(platformText));
+  async extractPlainText(platformText: string): Promise<string> {
+    return toPlainText(await this.toAst(platformText));
   }
 
   /**
    * Maximum length, in UTF-16 code units, of inbound text that
-   * `parseIncoming` will parse as markdown. The markdown parser has
-   * superlinear worst cases, so longer text is kept verbatim in a single
-   * text node.
+   * `parseIncoming` will parse as markdown. Longer text is kept verbatim in
+   * a single text node.
    * Subclasses can override this to match their platform's limits.
    */
   protected maxIncomingParseLength = DEFAULT_MAX_INCOMING_PARSE_LENGTH;
-
-  /**
-   * Maximum number of `*`, `_`, and `~` characters in inbound text that
-   * `parseIncoming` will parse as markdown. Text with more is kept verbatim
-   * in a single text node.
-   */
-  protected maxIncomingEmphasisMarkers = DEFAULT_MAX_INCOMING_EMPHASIS_MARKERS;
-
-  /**
-   * Maximum number of `]` characters in inbound text that `parseIncoming`
-   * will parse as markdown. Text with more is kept verbatim in a single text
-   * node.
-   */
-  protected maxIncomingClosingBrackets = DEFAULT_MAX_INCOMING_CLOSING_BRACKETS;
-
-  /**
-   * Maximum number of `<` characters in inbound text that `parseIncoming`
-   * will parse as markdown. Text with more is kept verbatim in a single text
-   * node.
-   */
-  protected maxIncomingAngleBrackets = DEFAULT_MAX_INCOMING_ANGLE_BRACKETS;
-
-  /**
-   * Maximum number of `www.` autolink literals in one run of non-whitespace
-   * characters of inbound text that `parseIncoming` will parse as markdown.
-   * Text with more is kept verbatim in a single text node.
-   */
-  protected maxIncomingWwwAutolinks = DEFAULT_MAX_INCOMING_WWW_AUTOLINKS;
-
-  /**
-   * Maximum container nesting on one line of inbound text that
-   * `parseIncoming` will parse as markdown, counting blockquote, list, and
-   * footnote definition markers plus half the columns of leading indentation.
-   * Text with a line nested deeper is kept verbatim in a single text node.
-   */
-  protected maxIncomingContainerMarkers =
-    DEFAULT_MAX_INCOMING_CONTAINER_MARKERS;
 
   /**
    * Maximum nesting depth of the AST `parseIncoming` returns. Text that
@@ -909,18 +627,19 @@ export abstract class BaseFormatConverter implements FormatConverter {
 
   /**
    * Parse inbound platform text into the plain text and AST for a `Message`.
-   * Parses once. Text that exceeds the limits checked by
-   * `exceedsIncomingBudget`, that overflows the stack while parsing, or that
-   * parses deeper than `maxIncomingAstDepth` is kept verbatim in a single text
-   * node.
+   * Parses once. Text longer than `maxIncomingParseLength`, that overflows
+   * the stack while parsing, or that parses deeper than `maxIncomingAstDepth`
+   * is kept verbatim in a single text node.
    */
-  parseIncoming(platformText: string): { formatted: Root; text: string } {
+  async parseIncoming(
+    platformText: string
+  ): Promise<{ formatted: Root; text: string }> {
     if (this.exceedsIncomingBudget(platformText)) {
       return this.unparsedIncoming(platformText);
     }
     let formatted: Root;
     try {
-      formatted = this.toAst(platformText);
+      formatted = await this.toAst(platformText);
     } catch (error) {
       if (error instanceof RangeError) {
         return this.unparsedIncoming(platformText);
@@ -934,50 +653,11 @@ export abstract class BaseFormatConverter implements FormatConverter {
   }
 
   /**
-   * Whether inbound text exceeds `maxIncomingParseLength` or, outside fenced
-   * code blocks, `maxIncomingEmphasisMarkers`, `maxIncomingClosingBrackets`,
-   * `maxIncomingAngleBrackets`, `maxIncomingWwwAutolinks` in any one word, or
-   * `maxIncomingContainerMarkers`. Checked before parsing, in linear time.
+   * Whether inbound text is too long to parse. Comark parses in linear time,
+   * so length is the only limit.
    */
   protected exceedsIncomingBudget(platformText: string): boolean {
-    if (platformText.length > this.maxIncomingParseLength) {
-      return true;
-    }
-    const skipFences = !FENCE_SKIP_DISABLED_PATTERN.test(platformText);
-    let emphasisMarkers = 0;
-    let closingBrackets = 0;
-    let angleBrackets = 0;
-    let fence: string | undefined;
-    for (const line of platformText.split(LINE_ENDING_PATTERN)) {
-      if (fence) {
-        if (closesFence(line, fence)) {
-          fence = undefined;
-        }
-        continue;
-      }
-      if (skipFences) {
-        fence = fenceOpener(line);
-        if (fence) {
-          continue;
-        }
-      }
-      const nesting = line.trim()
-        ? countContainerMarkers(line) + Math.floor(leadingColumns(line) / 2)
-        : 0;
-      emphasisMarkers += countChars(line, "*_~");
-      closingBrackets += countChars(line, "]");
-      angleBrackets += countChars(line, "<");
-      if (
-        nesting > this.maxIncomingContainerMarkers ||
-        emphasisMarkers > this.maxIncomingEmphasisMarkers ||
-        closingBrackets > this.maxIncomingClosingBrackets ||
-        angleBrackets > this.maxIncomingAngleBrackets ||
-        exceedsWwwAutolinksPerWord(line, this.maxIncomingWwwAutolinks)
-      ) {
-        return true;
-      }
-    }
-    return false;
+    return platformText.length > this.maxIncomingParseLength;
   }
 
   /**
@@ -1005,16 +685,16 @@ export abstract class BaseFormatConverter implements FormatConverter {
   }
 
   // Convenience methods for markdown string I/O
-  fromMarkdown(markdown: string): string {
-    return this.fromAst(parseMarkdown(markdown));
+  async fromMarkdown(markdown: string): Promise<string> {
+    return this.fromAst(await parseMarkdown(markdown));
   }
 
-  toMarkdown(platformText: string): string {
-    return stringifyMarkdown(this.toAst(platformText));
+  async toMarkdown(platformText: string): Promise<string> {
+    return stringifyMarkdown(await this.toAst(platformText));
   }
 
   /** @deprecated Use extractPlainText instead */
-  toPlainText(platformText: string): string {
+  toPlainText(platformText: string): Promise<string> {
     return this.extractPlainText(platformText);
   }
 
@@ -1030,7 +710,7 @@ export abstract class BaseFormatConverter implements FormatConverter {
    * Note: For cards, adapters should check for card content first and render
    * them using platform-specific card APIs, using this method only for fallback.
    */
-  renderPostable(message: PostableMessageInput): string {
+  async renderPostable(message: PostableMessageInput): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

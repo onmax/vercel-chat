@@ -150,7 +150,7 @@ describe("Gmail Pub/Sub primitives", () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it("keeps parsing separate from transport verification", () => {
+  it("keeps parsing separate from transport verification", async () => {
     expect(parseGmailNotification(body()).messageId).toBe("delivery");
     expect(() => parseGmailNotification("{")).toThrow(
       "Invalid Gmail Pub/Sub notification"

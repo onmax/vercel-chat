@@ -719,16 +719,16 @@ export class GitHubAdapter
     if (eventType === "issue_comment") {
       const issuePayload = payload as IssueCommentWebhookPayload;
       if (issuePayload.action === "created") {
-        this.requestContext.run(ctx, () => {
-          this.handleIssueComment(issuePayload, installationId, options);
-        });
+        await this.requestContext.run(ctx, () =>
+          this.handleIssueComment(issuePayload, installationId, options)
+        );
       }
     } else if (eventType === "pull_request_review_comment") {
       const reviewPayload = payload as PullRequestReviewCommentWebhookPayload;
       if (reviewPayload.action === "created") {
-        this.requestContext.run(ctx, () => {
-          this.handleReviewComment(reviewPayload, installationId, options);
-        });
+        await this.requestContext.run(ctx, () =>
+          this.handleReviewComment(reviewPayload, installationId, options)
+        );
       }
     }
 
@@ -763,11 +763,11 @@ export class GitHubAdapter
   /**
    * Handle issue_comment webhook (PR-level comments in Conversation tab).
    */
-  protected handleIssueComment(
+  protected async handleIssueComment(
     payload: IssueCommentWebhookPayload,
     _installationId: number | undefined,
     options?: WebhookOptions
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       this.logger.warn("Chat instance not initialized, ignoring comment");
       return;
@@ -784,7 +784,7 @@ export class GitHubAdapter
     });
 
     // Build message
-    const message = this.parseIssueComment(
+    const message = await this.parseIssueComment(
       comment,
       repository,
       issue.number,
@@ -806,11 +806,11 @@ export class GitHubAdapter
   /**
    * Handle pull_request_review_comment webhook (line-specific comments).
    */
-  protected handleReviewComment(
+  protected async handleReviewComment(
     payload: PullRequestReviewCommentWebhookPayload,
     _installationId: number | undefined,
     options?: WebhookOptions
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       this.logger.warn("Chat instance not initialized, ignoring comment");
       return;
@@ -832,7 +832,7 @@ export class GitHubAdapter
     });
 
     // Build message
-    const message = this.parseReviewComment(
+    const message = await this.parseReviewComment(
       comment,
       repository,
       pull_request.number,
@@ -853,19 +853,19 @@ export class GitHubAdapter
   /**
    * Parse an issue comment into a normalized Message.
    */
-  protected parseIssueComment(
+  protected async parseIssueComment(
     comment: GitHubIssueComment,
     repository: { owner: GitHubUser; name: string },
     prNumber: number,
     threadId: string,
     threadType: "pr" | "issue" = "pr"
-  ): Message<GitHubRawMessage> {
+  ): Promise<Message<GitHubRawMessage>> {
     const author = this.parseAuthor(comment.user);
 
     return new Message({
       id: comment.id.toString(),
       threadId,
-      ...this.formatConverter.parseIncoming(comment.body),
+      ...(await this.formatConverter.parseIncoming(comment.body)),
       raw: {
         type: "issue_comment",
         comment,
@@ -894,18 +894,18 @@ export class GitHubAdapter
   /**
    * Parse a review comment into a normalized Message.
    */
-  protected parseReviewComment(
+  protected async parseReviewComment(
     comment: GitHubReviewComment,
     repository: { owner: GitHubUser; name: string },
     prNumber: number,
     threadId: string
-  ): Message<GitHubRawMessage> {
+  ): Promise<Message<GitHubRawMessage>> {
     const author = this.parseAuthor(comment.user);
 
     return new Message({
       id: comment.id.toString(),
       threadId,
-      ...this.formatConverter.parseIncoming(comment.body),
+      ...(await this.formatConverter.parseIncoming(comment.body)),
       raw: {
         type: "review_comment",
         comment,
@@ -973,7 +973,7 @@ export class GitHubAdapter
     if (card) {
       body = cardToGitHubMarkdown(card);
     } else {
-      body = this.formatConverter.renderPostable(message);
+      body = await this.formatConverter.renderPostable(message);
     }
 
     // Convert emoji placeholders to unicode
@@ -1057,7 +1057,7 @@ export class GitHubAdapter
     if (card) {
       body = cardToGitHubMarkdown(card);
     } else {
-      body = this.formatConverter.renderPostable(message);
+      body = await this.formatConverter.renderPostable(message);
     }
 
     // Convert emoji placeholders to unicode
@@ -1320,15 +1320,17 @@ export class GitHubAdapter
         (c) => c.id === reviewCommentId || c.in_reply_to_id === reviewCommentId
       );
 
-      messages = threadComments.map((comment) =>
-        this.parseReviewComment(
-          comment as GitHubReviewComment,
-          {
-            owner: { id: 0, login: owner, type: "User", avatar_url: "" },
-            name: repo,
-          },
-          prNumber,
-          threadId
+      messages = await Promise.all(
+        threadComments.map((comment) =>
+          this.parseReviewComment(
+            comment as GitHubReviewComment,
+            {
+              owner: { id: 0, login: owner, type: "User", avatar_url: "" },
+              name: repo,
+            },
+            prNumber,
+            threadId
+          )
         )
       );
     } else {
@@ -1340,16 +1342,18 @@ export class GitHubAdapter
         per_page: limit,
       });
 
-      messages = comments.map((comment) =>
-        this.parseIssueComment(
-          comment as GitHubIssueComment,
-          {
-            owner: { id: 0, login: owner, type: "User", avatar_url: "" },
-            name: repo,
-          },
-          prNumber,
-          threadId,
-          type ?? "pr"
+      messages = await Promise.all(
+        comments.map((comment) =>
+          this.parseIssueComment(
+            comment as GitHubIssueComment,
+            {
+              owner: { id: 0, login: owner, type: "User", avatar_url: "" },
+              name: repo,
+            },
+            prNumber,
+            threadId,
+            type ?? "pr"
+          )
         )
       );
     }
@@ -1551,54 +1555,56 @@ export class GitHubAdapter
       page: options.cursor ? Number.parseInt(options.cursor, 10) : 1,
     });
 
-    const threads: ListThreadsResult<GitHubRawMessage>["threads"] = pulls.map(
-      (pr) => {
-        const threadId = this.encodeThreadId({
-          owner,
-          repo,
-          prNumber: pr.number,
-        });
-
-        const rootMessage = new Message<GitHubRawMessage>({
-          id: pr.number.toString(),
-          threadId,
-          text: pr.title,
-          formatted: this.formatConverter.parseIncoming(pr.title).formatted,
-          raw: {
-            type: "issue_comment",
-            comment: {
-              id: pr.number,
-              body: pr.body || pr.title,
-              user: pr.user as GitHubUser,
-              created_at: pr.created_at,
-              updated_at: pr.updated_at,
-              html_url: pr.html_url,
-            } as GitHubIssueComment,
-            repository: {
-              id: 0,
-              name: repo,
-              full_name: `${owner}/${repo}`,
-              owner: { id: 0, login: owner, type: "User" },
-            },
+    const threads: ListThreadsResult<GitHubRawMessage>["threads"] =
+      await Promise.all(
+        pulls.map(async (pr) => {
+          const threadId = this.encodeThreadId({
+            owner,
+            repo,
             prNumber: pr.number,
-            threadType: "pr",
-          },
-          author: this.parseAuthor(pr.user as GitHubUser),
-          metadata: {
-            dateSent: new Date(pr.created_at),
-            edited: pr.created_at !== pr.updated_at,
-          },
-          attachments: [],
-          links: [],
-        });
+          });
 
-        return {
-          id: threadId,
-          rootMessage,
-          lastReplyAt: new Date(pr.updated_at),
-        };
-      }
-    );
+          const rootMessage = new Message<GitHubRawMessage>({
+            id: pr.number.toString(),
+            threadId,
+            text: pr.title,
+            formatted: (await this.formatConverter.parseIncoming(pr.title))
+              .formatted,
+            raw: {
+              type: "issue_comment",
+              comment: {
+                id: pr.number,
+                body: pr.body || pr.title,
+                user: pr.user as GitHubUser,
+                created_at: pr.created_at,
+                updated_at: pr.updated_at,
+                html_url: pr.html_url,
+              } as GitHubIssueComment,
+              repository: {
+                id: 0,
+                name: repo,
+                full_name: `${owner}/${repo}`,
+                owner: { id: 0, login: owner, type: "User" },
+              },
+              prNumber: pr.number,
+              threadType: "pr",
+            },
+            author: this.parseAuthor(pr.user as GitHubUser),
+            metadata: {
+              dateSent: new Date(pr.created_at),
+              edited: pr.created_at !== pr.updated_at,
+            },
+            attachments: [],
+            links: [],
+          });
+
+          return {
+            id: threadId,
+            rootMessage,
+            lastReplyAt: new Date(pr.updated_at),
+          };
+        })
+      );
 
     // Simple page-based cursor
     const currentPage = options.cursor
@@ -1650,7 +1656,7 @@ export class GitHubAdapter
   /**
    * Parse a raw message into normalized format.
    */
-  parseMessage(raw: GitHubRawMessage): Message<GitHubRawMessage> {
+  parseMessage(raw: GitHubRawMessage): Promise<Message<GitHubRawMessage>> {
     if (raw.type === "issue_comment") {
       const threadType = raw.threadType ?? "pr";
       const threadId = this.encodeThreadId({
@@ -1685,7 +1691,7 @@ export class GitHubAdapter
   /**
    * Render formatted content to GitHub markdown.
    */
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 

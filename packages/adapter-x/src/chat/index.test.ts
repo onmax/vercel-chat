@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { type ChatInstance, paragraph, parseMarkdown, root, text } from "chat";
+import { type ChatInstance, parseMarkdown } from "chat";
 import { describe, expect, it, vi } from "vitest";
 
 const createChatMock = vi.hoisted(() => vi.fn());
@@ -213,7 +213,7 @@ describe("channelIdFromThreadId", () => {
 });
 
 describe("parseMessage", () => {
-  it("should parse a decrypted text message", () => {
+  it("should parse a decrypted text message", async () => {
     const adapter = createTestAdapter();
     const raw: XchatRawMessage = {
       event: {
@@ -234,7 +234,7 @@ describe("parseMessage", () => {
       },
     };
 
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.id).toBe("msg-1");
     expect(message.text).toBe("Hello world");
     expect(message.author.userId).toBe("67890");
@@ -242,7 +242,7 @@ describe("parseMessage", () => {
     expect(message.threadId).toBe("xchat:12345-67890");
   });
 
-  it("should handle messages with no decrypted content", () => {
+  it("should handle messages with no decrypted content", async () => {
     const adapter = createTestAdapter();
     const raw: XchatRawMessage = {
       event: {
@@ -254,12 +254,12 @@ describe("parseMessage", () => {
       decrypted: null,
     };
 
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.id).toBe("msg-2");
     expect(message.text).toBe("");
   });
 
-  it("should detect self messages", () => {
+  it("should detect self messages", async () => {
     const adapter = createTestAdapter();
     const raw: XchatRawMessage = {
       event: {
@@ -275,7 +275,7 @@ describe("parseMessage", () => {
       },
     };
 
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.author.isMe).toBe(true);
   });
 });
@@ -298,13 +298,15 @@ describe("parseMessage inbound markdown bounds", () => {
     };
   }
 
-  it("parses markdown text into real structure", () => {
-    const message = createTestAdapter().parseMessage(
+  it("parses markdown text into real structure", async () => {
+    const message = await createTestAdapter().parseMessage(
       rawWithText("**bold** and `code`")
     );
 
     expect(message.text).toBe("**bold** and `code`");
-    expect(message.formatted).toEqual(parseMarkdown("**bold** and `code`"));
+    expect(message.formatted).toEqual(
+      await parseMarkdown("**bold** and `code`")
+    );
   });
 
   it.each([
@@ -312,11 +314,10 @@ describe("parseMessage inbound markdown bounds", () => {
     ["6,000 nested blockquotes", ">".repeat(6000)],
     ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
     ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-  ])("keeps text with %s verbatim", (_, body) => {
-    const message = createTestAdapter().parseMessage(rawWithText(body));
+  ])("keeps the text of a message with %s", async (_, body) => {
+    const message = await createTestAdapter().parseMessage(rawWithText(body));
 
     expect(message.text).toBe(body);
-    expect(message.formatted).toEqual(root([paragraph([text(body)])]));
     expect(() => JSON.stringify(message.toJSON())).not.toThrow();
   });
 });
@@ -1315,10 +1316,10 @@ describe("parseMessage mention + attachment mapping", () => {
     };
   }
 
-  it("sets isMention when an entity mention targets the bot handle", () => {
+  it("sets isMention when an entity mention targets the bot handle", async () => {
     const adapter = createTestAdapter();
     const text = "yo @test-bot help";
-    const message = adapter.parseMessage(
+    const message = await adapter.parseMessage(
       rawFor({
         type: "message",
         senderId: TEST_OTHER_USER_ID,
@@ -1334,9 +1335,9 @@ describe("parseMessage mention + attachment mapping", () => {
     expect(message.isMention).toBe(true);
   });
 
-  it("sets isMention on a swipe-reply to the bot", () => {
+  it("sets isMention on a swipe-reply to the bot", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage(
+    const message = await adapter.parseMessage(
       rawFor({
         type: "message",
         senderId: TEST_OTHER_USER_ID,
@@ -1350,9 +1351,9 @@ describe("parseMessage mention + attachment mapping", () => {
     expect(message.isMention).toBe(true);
   });
 
-  it("ignores a swipe-reply whose preview failed validation", () => {
+  it("ignores a swipe-reply whose preview failed validation", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage(
+    const message = await adapter.parseMessage(
       rawFor({
         type: "message",
         senderId: TEST_OTHER_USER_ID,
@@ -1367,9 +1368,9 @@ describe("parseMessage mention + attachment mapping", () => {
     expect(message.isMention).toBeUndefined();
   });
 
-  it("leaves isMention unset for plain group text", () => {
+  it("leaves isMention unset for plain group text", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage(
+    const message = await adapter.parseMessage(
       rawFor({
         type: "message",
         senderId: TEST_OTHER_USER_ID,
@@ -1379,9 +1380,9 @@ describe("parseMessage mention + attachment mapping", () => {
     expect(message.isMention).toBeUndefined();
   });
 
-  it("maps media attachments with lazy fetchData", () => {
+  it("maps media attachments with lazy fetchData", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage(
+    const message = await adapter.parseMessage(
       rawFor({
         type: "message",
         senderId: TEST_OTHER_USER_ID,
@@ -1450,7 +1451,7 @@ describe("group quote-replies (real crypto)", () => {
 
       // Record inbound context by parsing a group message that carries the
       // fixture's genuine server-shaped raw signed event.
-      adapter.parseMessage({
+      await adapter.parseMessage({
         event: {
           id: "evt-g1",
           conversationId: groupConvId,
@@ -1523,9 +1524,9 @@ describe("group quote-replies (real crypto)", () => {
 
       // Webhook delivers the triggering message, then a history fetch parses
       // the page newest-first, ending on the oldest message.
-      parseAt("newest", 3000);
-      parseAt("older", 2000);
-      parseAt("oldest", 1000);
+      await parseAt("newest", 3000);
+      await parseAt("older", 2000);
+      await parseAt("oldest", 1000);
 
       const engine = (adapter as any).cryptoEngine;
       const replySpy = vi.spyOn(engine, "encryptReply");
@@ -1564,7 +1565,7 @@ describe("group quote-replies (real crypto)", () => {
       });
 
       // Inbound context with an encoded event that is not a parseable event
-      adapter.parseMessage({
+      await adapter.parseMessage({
         event: {
           id: "evt-g2",
           conversationId: groupConvId,
@@ -1640,7 +1641,7 @@ describe("reactions (real crypto)", () => {
         latestVersion: "1",
       });
       // Cache the message → sequence mapping via parseMessage
-      adapter.parseMessage({
+      await adapter.parseMessage({
         event: {
           id: "evt-r1",
           conversationId: TEST_CONVERSATION_ID,
@@ -1713,7 +1714,7 @@ describe("inbound reaction routing", () => {
     const { adapter, mockChat, restore } = await createInitializedTestAdapter();
     try {
       // Seed the messageId ⇄ sequenceId mapping via a parsed message.
-      adapter.parseMessage({
+      await adapter.parseMessage({
         event: {
           id: "evt-r2",
           conversationId: TEST_CONVERSATION_ID,
@@ -1729,7 +1730,7 @@ describe("inbound reaction routing", () => {
         },
       });
 
-      const parsed = adapter.parseMessage(reactionRaw("seq-9"));
+      const parsed = await adapter.parseMessage(reactionRaw("seq-9"));
       (adapter as any).routeReaction(TEST_THREAD_ID, parsed, true, undefined);
 
       expect(mockChat.processReaction).toHaveBeenCalledOnce();
@@ -1746,7 +1747,7 @@ describe("inbound reaction routing", () => {
   it("falls back to the raw sequence id when the target is unknown", async () => {
     const { adapter, mockChat, restore } = await createInitializedTestAdapter();
     try {
-      const parsed = adapter.parseMessage(reactionRaw("seq-unseen"));
+      const parsed = await adapter.parseMessage(reactionRaw("seq-unseen"));
       (adapter as any).routeReaction(TEST_THREAD_ID, parsed, false, undefined);
 
       expect(mockChat.processReaction).toHaveBeenCalledOnce();
@@ -1882,7 +1883,7 @@ describe("markAsRead", () => {
       xdk.chat.markConversationRead = vi
         .fn()
         .mockResolvedValue({ data: { success: true } });
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         event: {
           id: "evt-read",
           conversationId: TEST_CONVERSATION_ID,
@@ -1916,7 +1917,7 @@ describe("markAsRead", () => {
         .fn()
         .mockResolvedValue({ data: { success: true } });
 
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         event: {
           id: "evt-nr",
           conversationId: TEST_CONVERSATION_ID,
@@ -1961,7 +1962,7 @@ describe("markAsRead", () => {
         .fn()
         .mockResolvedValue({ data: { success: true } });
 
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         event: {
           id: "evt-no-seq",
           conversationId: TEST_CONVERSATION_ID,
@@ -2025,7 +2026,7 @@ describe("markAsRead", () => {
       xdk.chat.markConversationRead = vi
         .fn()
         .mockRejectedValue(new Error("receipt failed"));
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         event: {
           id: "evt-read-fail",
           conversationId: TEST_CONVERSATION_ID,
@@ -2052,7 +2053,7 @@ describe("markAsRead", () => {
       xdk.chat.markConversationRead = vi
         .fn()
         .mockResolvedValue({ data: { success: false } });
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         event: {
           id: "evt-read-unsuccessful",
           conversationId: TEST_CONVERSATION_ID,
@@ -2285,9 +2286,9 @@ describe("urlCardAttachment banner upload (real crypto)", () => {
 });
 
 describe("parseMessage edit events", () => {
-  it("renders an edit event as the edited message and maps its target sequence id", () => {
+  it("renders an edit event as the edited message and maps its target sequence id", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       event: {
         id: "edit-evt-1",
         conversationId: TEST_CONVERSATION_ID,

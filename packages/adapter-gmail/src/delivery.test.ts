@@ -79,7 +79,7 @@ describe("Gmail private delivery and custom verification", () => {
       copied ? ["colleague@example.com"] : undefined
     );
   });
-  it("explains that me is not a mailbox address before network access", () => {
+  it("explains that me is not a mailbox address before network access", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     expect(() =>
       createGmailAdapter({ ...config, mailbox: "me", fetch })
@@ -349,7 +349,7 @@ describe("Gmail private delivery and custom verification", () => {
     expect(sync).toHaveBeenCalledOnce();
   });
 
-  it("still requires native authentication configuration without an override", () => {
+  it("still requires native authentication configuration without an override", async () => {
     expect(() =>
       createGmailAdapter({
         ...config,

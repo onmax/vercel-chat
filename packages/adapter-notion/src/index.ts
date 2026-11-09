@@ -627,7 +627,7 @@ export class NotionAdapter
   // Parsing / mentions
   // ---------------------------------------------------------------------------
 
-  parseMessage(raw: NotionRawMessage): Message<NotionRawMessage> {
+  parseMessage(raw: NotionRawMessage): Promise<Message<NotionRawMessage>> {
     const pageId = raw.pageId;
     const threadId = this.encodeThreadId({
       pageId,
@@ -636,11 +636,11 @@ export class NotionAdapter
     return this.parseComment(raw.comment, threadId, raw.event);
   }
 
-  protected parseComment(
+  protected async parseComment(
     comment: NotionComment,
     threadId: string,
     event?: NotionWebhookEvent
-  ): Message<NotionRawMessage> {
+  ): Promise<Message<NotionRawMessage>> {
     const plain = this.formatConverter.richTextToPlain(comment.rich_text);
     const markdown = this.formatConverter.richTextToMarkdown(comment.rich_text);
     const isBot =
@@ -654,8 +654,9 @@ export class NotionAdapter
       id: comment.id,
       threadId,
       text: plain,
-      formatted: this.formatConverter.parseIncoming(markdown || plain || "")
-        .formatted,
+      formatted: (
+        await this.formatConverter.parseIncoming(markdown || plain || "")
+      ).formatted,
       raw: { comment, pageId: this.decodeThreadId(threadId).pageId, event },
       author: {
         userId: comment.created_by.id,
@@ -715,7 +716,7 @@ export class NotionAdapter
     }
   }
 
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 
@@ -1035,13 +1036,15 @@ export class NotionAdapter
     const pageSize = Math.min(Math.max(limit, 1), 100);
 
     const toMessages = (comments: NotionComment[]) =>
-      comments.map((comment) =>
-        this.parseComment(
-          comment,
-          this.encodeThreadId({
-            pageId: decoded.pageId,
-            discussionId: comment.discussion_id,
-          })
+      Promise.all(
+        comments.map((comment) =>
+          this.parseComment(
+            comment,
+            this.encodeThreadId({
+              pageId: decoded.pageId,
+              discussionId: comment.discussion_id,
+            })
+          )
         )
       );
 
@@ -1065,7 +1068,7 @@ export class NotionAdapter
       const comments = filterDiscussion(list.results).slice(0, limit);
 
       return {
-        messages: toMessages(comments),
+        messages: await toMessages(comments),
         nextCursor: list.has_more ? (list.next_cursor ?? undefined) : undefined,
       };
     }
@@ -1106,7 +1109,7 @@ export class NotionAdapter
     }
 
     return {
-      messages: toMessages(collected.slice(-limit)),
+      messages: await toMessages(collected.slice(-limit)),
       nextCursor: stoppedEarly ? earlyCursor : undefined,
     };
   }
@@ -1706,7 +1709,7 @@ export class NotionAdapter
         cardToNotionMarkdown(card)
       );
     } else {
-      markdown = this.formatConverter.renderPostable(message);
+      markdown = await this.formatConverter.renderPostable(message);
     }
 
     const files = extractFiles(message);

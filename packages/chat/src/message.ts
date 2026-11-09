@@ -3,7 +3,7 @@
  */
 
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
-import type { Root } from "mdast";
+import type { Root } from "./markdown";
 import type {
   Adapter,
   Attachment,
@@ -32,7 +32,7 @@ export interface MessageData<TRawMessage = unknown> {
   attachments: Attachment[];
   /** Message author */
   author: Author;
-  /** Structured formatting as an AST (mdast Root) */
+  /** Structured formatting as an AST (Comark document) */
   formatted: FormattedContent;
   /** Unique message ID */
   id: string;
@@ -128,7 +128,7 @@ export class Message<TRawMessage = unknown> {
   /** Plain text content (all formatting stripped) */
   text: string;
   /**
-   * Structured formatting as an AST (mdast Root).
+   * Structured formatting as an AST (Comark document).
    * This is the canonical representation - use this for processing.
    * Use `stringifyMarkdown(message.formatted)` to get markdown string.
    */
