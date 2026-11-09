@@ -10,6 +10,7 @@ import type {
   RenderMarkdownOptions,
 } from "comark";
 import { createMarkdownParser } from "comark";
+import linkify from "comark/plugins/linkify";
 import { renderMarkdown } from "comark/render";
 import type { CardChild, CardElement, ChartElement } from "./cards";
 import type { AdapterPostableMessage } from "./types";
@@ -249,6 +250,7 @@ const parser = createMarkdownParser({
   autoUnwrap: false,
   headingIds: false,
   registerDefaultPlugins: false,
+  plugins: [linkify()],
 });
 
 /**

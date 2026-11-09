@@ -362,9 +362,7 @@ describe("SlackFormatConverter", () => {
         await converter.toResponseUrlText({
           markdown: "See hackmd.io/@jkyang/abc cc @george",
         })
-      ).toBe(
-        "See <http://hackmd.io/@jkyang/abc|hackmd.io/@jkyang/abc> cc <@george>"
-      );
+      ).toBe("See hackmd.io/@jkyang/abc cc <@george>");
     });
 
     it("handles malformed angle text without rescanning it", async () => {

@@ -458,7 +458,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^5.0.3
-        version: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(@vitest/coverage-v8@5.0.3)(vite@8.3.3(@types/node@25.3.2)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(@vitest/coverage-v8@5.0.3)(vite@8.3.3(@types/node@25.3.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
 
   packages/adapter-gchat:
     dependencies:
@@ -996,8 +996,8 @@ importers:
         specifier: 4.1.0-beta.2
         version: 4.1.0-beta.2
       comark:
-        specifier: https://pkg.pr.new/comark@10d5415
-        version: https://pkg.pr.new/comark@10d5415
+        specifier: https://pkg.pr.new/comark@237f314
+        version: https://pkg.pr.new/comark@237f314
     devDependencies:
       '@tanstack/ai':
         specifier: 0.54.0
@@ -1019,7 +1019,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^5.0.3
-        version: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(@vitest/coverage-v8@5.0.3)(vite@8.3.3(@types/node@25.3.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(@vitest/coverage-v8@5.0.3)(vite@8.3.3(@types/node@25.3.2)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
       workflow:
         specifier: 5.0.0-beta.40
         version: 5.0.0-beta.40(@aws-sdk/credential-provider-web-identity@3.972.49)(@nestjs/common@11.1.19(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.19(@nestjs/common@11.1.19(reflect-metadata@0.2.2)(rxjs@7.8.2))(reflect-metadata@0.2.2)(rxjs@7.8.2))(@opentelemetry/api@1.9.0)(@swc/cli@0.8.1(@swc/core@1.15.3(@swc/helpers@0.5.23))(chokidar@5.0.0))(@swc/core@1.15.3(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(magicast@0.5.5)(next@16.4.1(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)(typescript@5.9.3)(ws@8.21.0)
@@ -6984,14 +6984,8 @@ packages:
   '@types/jsonwebtoken@9.0.10':
     resolution: {integrity: sha512-asx5hIG9Qmf/1oStypjanR7iKTv0gXQ1Ov/jfrX6kS/EO0OFni8orbmGCn0672NHR3kXHwpAwR+B368ZGN/2rA==}
 
-  '@types/linkify-it@5.0.0':
-    resolution: {integrity: sha512-sVDA58zAw4eWAffKOaQH5/5j3XeayukzDk+ewSsnv3p4yJEZHCCzMDiZM8e0OUrRvmpGZ85jf4yDHkHsgBNr9Q==}
-
   '@types/mdast@4.0.4':
     resolution: {integrity: sha512-kGaNbPh1k7AFzgpud/gMdvIm5xuECykRR+JnWKQno9TAXVa6WIVCGTPvYGekIDL4uwCZQSYbUxNBSb1aUo79oA==}
-
-  '@types/mdurl@2.0.0':
-    resolution: {integrity: sha512-RGdgjQUZba5p6QEFAVx2OGb8rQDL/cPRG7GiedRzMcJ1tYnUANBncjbSB1NRGwbvjcPeikRABz2nshyPk1bhWg==}
 
   '@types/mdx@2.0.13':
     resolution: {integrity: sha512-+OWZQfAYyio6YkJb3HLxDrvnx6SWWDbC0zVPfBRzUk0/nqoDyf6dNxQi3eArPe8rJ473nobTMQ/8Zk+LxJ+Yuw==}
@@ -8207,9 +8201,9 @@ packages:
   color-name@1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
-  comark@https://pkg.pr.new/comark@10d5415:
-    resolution: {tarball: https://pkg.pr.new/comark@10d5415}
-    version: 0.8.1
+  comark@https://pkg.pr.new/comark@237f314:
+    resolution: {integrity: sha512-HB5hSE5SMpTYrdP0Q2F6rxBn0ODO6o17EmhmwPK3Pe9elxRm6X6GJNDuiy+rVzOUGgt9LJyIien90OWWaI1h8A==, tarball: https://pkg.pr.new/comark@237f314}
+    version: 0.9.0
     peerDependencies:
       beautiful-mermaid: ^1.1.3
       katex: ^0.19.1
@@ -8827,10 +8821,6 @@ packages:
   entities@7.0.1:
     resolution: {integrity: sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==}
     engines: {node: '>=0.12'}
-
-  entities@8.1.0:
-    resolution: {integrity: sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==}
-    engines: {node: '>=20.19.0'}
 
   env-runner@0.2.3:
     resolution: {integrity: sha512-S8EFBKyznRwPVwayK187cYjvnpgC92xy+q0BIF++V965pfjMVVRbQ/HoTYGA/1EHmZ7E68k6Heq+4WnvVhOL5w==}
@@ -10226,8 +10216,8 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
-  linkify-it@5.0.2:
-    resolution: {integrity: sha512-ONTm2jCMAVZjgQa/Fy1kScXsuOoF5NPTsoFBdE1KVIZ2vAh/r9+Bqo+0jINCBYnavTPQZz38QzFTme79ENoN3Q==}
+  linkify-it@6.1.0:
+    resolution: {integrity: sha512-wJ/TwpSDTLepCrQoYWYIExIKg5Zchex2Nn5yk2mFnB+6PtdkHtyLx742md9csRjjOnGkKIS/RrbY7l8D6gT9Vw==}
 
   listhen@1.10.0:
     resolution: {integrity: sha512-kfz4C0OrC6IpaVMtYDJtf6PFjurxe9NBBoDAh/o2p587INryFOO4DQ9OetbCdDrWFt1m1CJKvYrzkGsuPHw8nQ==}
@@ -10368,8 +10358,8 @@ packages:
     resolution: {integrity: sha512-ayF7iT+44LXdxJLTrTd3TLQpFDDvPCBxXxbv+pMUSuHA5Q8zyAfwkRP6aHHwNVFBUFWtxAHqwNJxF8vMZLAbVg==}
     engines: {node: '>=18'}
 
-  markdown-exit@1.3.0:
-    resolution: {integrity: sha512-bsqlcm3Hk1ukcG1Al83pp3JjVobu4w1mpZz47OzLw8bCY8XchkCX+PXC32l2TH4nZ7p5WFg2NwpnLDXkY1X7Yw==}
+  markdown-exit@2.1.0:
+    resolution: {integrity: sha512-ffGj82OodjwgZ2tZtXBLXvJsMbvgtp2r+RDQgpAuWSk2Zi2zgNfQPyzVQFHAUV6Z/B/uQwqFHHEKNmeogIMsbw==}
 
   markdown-extensions@2.0.0:
     resolution: {integrity: sha512-o5vL7aDWatOTX8LzaS1WMoaoxIiLRQJuIKKe2wAw6IeULDHaqbiqiggmx+pKvZDb1Sj+pE46Sn1T7lCqfFtg1Q==}
@@ -12428,8 +12418,8 @@ packages:
   tiny-invariant@1.3.3:
     resolution: {integrity: sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==}
 
-  tinyaml@0.1.0:
-    resolution: {integrity: sha512-rSx4dnwW2KndEc8V7hKNo4UE6o2RieOmSkYU+9aWd5/08Jv9jrAUitX95xrFQ4bGd9G2VawJ65jRCJ9fuy8ViA==}
+  tinyaml@0.1.1:
+    resolution: {integrity: sha512-pidB+k50w8DwVHeh03c7VxrV0fY6aRyrG+OZxqv1KGQHiCBDyg4uGihRLjU8EeIwiFxBsiBbbGtwL4x5MzVing==}
     engines: {node: '>=22.12.0'}
     hasBin: true
     peerDependencies:
@@ -12604,8 +12594,8 @@ packages:
     resolution: {integrity: sha512-LbBDqdIC5s8iROCUjMbW1f5dJQTEFB1+KO9ogbvlb3nm9n4YHa5p4KTvFPWvh2Hs8gZMBuiB1/8+pdfe/tDPug==}
     hasBin: true
 
-  uc.micro@2.1.0:
-    resolution: {integrity: sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A==}
+  uc.micro@3.0.0:
+    resolution: {integrity: sha512-U3PppEkleoTnIfi8BozMx3yju3qc/L6SwqWo2Sw+54PX+PX0q9I+r1Um5HCmqD7n9VDX5/v3vQH/AjA6deDdtw==}
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -19329,13 +19319,9 @@ snapshots:
       '@types/ms': 2.1.0
       '@types/node': 25.9.2
 
-  '@types/linkify-it@5.0.0': {}
-
   '@types/mdast@4.0.4':
     dependencies:
       '@types/unist': 3.0.3
-
-  '@types/mdurl@2.0.0': {}
 
   '@types/mdx@2.0.13': {}
 
@@ -19652,7 +19638,7 @@ snapshots:
       obug: 2.2.1
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@25.9.2)(@vitest/coverage-v8@5.0.3)(vite@8.3.3(@types/node@25.9.2)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
+      vitest: 5.0.3(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(@vitest/coverage-v8@5.0.3)(vite@8.3.3(@types/node@25.3.2)(esbuild@0.27.7)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.3)(yaml@2.9.0))
 
   '@vitest/expect@5.0.3':
     dependencies:
@@ -21084,11 +21070,13 @@ snapshots:
 
   color-name@1.1.4: {}
 
-  comark@https://pkg.pr.new/comark@10d5415:
+  comark@https://pkg.pr.new/comark@237f314:
     dependencies:
-      entities: 8.1.0
-      markdown-exit: 1.3.0
-      tinyaml: 0.1.0
+      character-entities: 2.0.2
+      character-entities-legacy: 3.0.0
+      linkify-it: 6.1.0
+      markdown-exit: 2.1.0
+      tinyaml: 0.1.1
     transitivePeerDependencies:
       - eslint
       - vite-doctor
@@ -21689,8 +21677,6 @@ snapshots:
   entities@6.0.1: {}
 
   entities@7.0.1: {}
-
-  entities@8.1.0: {}
 
   env-runner@0.2.3:
     dependencies:
@@ -23279,9 +23265,9 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
-  linkify-it@5.0.2:
+  linkify-it@6.1.0:
     dependencies:
-      uc.micro: 2.1.0
+      uc.micro: 3.0.0
 
   listhen@1.10.0(srvx@0.11.21):
     dependencies:
@@ -23443,15 +23429,13 @@ snapshots:
       type-fest: 4.41.0
       web-worker: 1.5.0
 
-  markdown-exit@1.3.0:
+  markdown-exit@2.1.0:
     dependencies:
-      '@types/linkify-it': 5.0.0
-      '@types/mdurl': 2.0.0
-      entities: 7.0.1
-      linkify-it: 5.0.2
+      character-entities: 2.0.2
+      linkify-it: 6.1.0
       mdurl: 2.1.0
       punycode.js: 2.3.1
-      uc.micro: 2.1.0
+      uc.micro: 3.0.0
 
   markdown-extensions@2.0.0: {}
 
@@ -26375,7 +26359,7 @@ snapshots:
 
   tiny-invariant@1.3.3: {}
 
-  tinyaml@0.1.0: {}
+  tinyaml@0.1.1: {}
 
   tinybench@6.2.1: {}
 
@@ -26549,7 +26533,7 @@ snapshots:
 
   ua-parser-js@1.0.41: {}
 
-  uc.micro@2.1.0: {}
+  uc.micro@3.0.0: {}
 
   ufo@1.6.4: {}
 
