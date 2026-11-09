@@ -9,7 +9,7 @@ import type {
   Node,
   RenderMarkdownOptions,
 } from "comark";
-import { createMarkdownParser } from "comark";
+import { createMarkdownParser } from "comark/core";
 import linkify from "comark/plugins/linkify";
 import { renderMarkdown } from "comark/render";
 import type { CardChild, CardElement, ChartElement } from "./cards";
@@ -246,10 +246,8 @@ function exceedsDepth(ast: Root, max: number): boolean {
 // `::x` in a chat message stay text. Incoming text is complete, so nothing is
 // auto-closed, and list items keep their paragraphs, as in CommonMark.
 const parser = createMarkdownParser({
-  autoClose: false,
   autoUnwrap: false,
   headingIds: false,
-  registerDefaultPlugins: false,
   plugins: [linkify()],
 });
 

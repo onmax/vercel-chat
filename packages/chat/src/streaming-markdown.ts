@@ -1,4 +1,4 @@
-import { autoCloseMarkdown } from "comark";
+import { autoCloseMarkdown } from "comark/auto-close";
 
 // The renderer holds back table headers itself, so only inline markers and
 // links are closed.
