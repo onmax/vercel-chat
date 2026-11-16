@@ -7,22 +7,25 @@
  * balanced in both MarkdownV2 and rich-message markdown.
  */
 
-import type { Nodes, Root } from "chat";
+import {
+  type Content,
+  getNodeAttributes,
+  getNodeChildren,
+  getNodeTag,
+  isTableNode,
+  type Root,
+  root as rootOf,
+} from "chat";
 
-type ParentNode = Extract<Nodes, { children: unknown[] }>;
-type ValueNode = Extract<Nodes, { value: string }>;
-type DefinitionNode = Extract<
-  Nodes,
-  { type: "definition" | "footnoteDefinition" }
->;
-type Fits = (root: Root) => boolean;
+type Element = [string, Record<string, unknown>, ...Content[]];
+type Fits = (root: Root) => boolean | Promise<boolean>;
 /**
  * Wrap a piece of a node in copies of its ancestors. `first` is set while
  * sizing the first piece the node emits, which shares its part with the
  * siblings packed before it at each ancestor level.
  */
-type Wrap = (node: Nodes, first: boolean) => Root;
-type Build = (items: Nodes[], firstIndex: number) => Nodes;
+type Wrap = (node: Content, first: boolean) => Root;
+type Build = (items: Content[], firstIndex: number) => Content;
 
 interface BreakRules {
   /** Share of the budget a separator must keep to be used. */
@@ -30,6 +33,11 @@ interface BreakRules {
   /** Separators to break at, in order of preference. */
   separators: readonly string[];
 }
+
+// The document, as an element so it splits like any other container.
+const ROOT_TAG = "#root";
+// Elements that render something without children.
+const LEAF_TAGS = new Set(["br", "hr", "img", "th", "td"]);
 
 // Text only breaks at a separator that keeps at least half the budget;
 // otherwise a far-back newline would produce a tiny part.
@@ -42,6 +50,14 @@ const TEXT_BREAKS: BreakRules = {
 const CODE_BREAKS: BreakRules = { minRatio: 0, separators: ["\n"] };
 const EMOJI_PLACEHOLDER = /\{\{emoji:[a-z0-9_]+\}\}/gi;
 
+function isNode(node: Content | null): node is Content {
+  return node !== null;
+}
+
+function toRoot(node: Content): Root {
+  return rootOf(getNodeChildren(node));
+}
+
 /**
  * Split `root` into ordered roots that each satisfy `fits`.
  *
@@ -52,24 +68,52 @@ const EMOJI_PLACEHOLDER = /\{\{emoji:[a-z0-9_]+\}\}/gi;
  * copies of its ancestors, so a split bold run or code block is reopened in
  * the next part. A node that cannot be split further and still does not fit
  * (for example an image with a huge URL) is emitted on its own.
- *
- * Reference definitions are moved to the end of every part that references
- * them, so a reference never ends up in a different part from its definition.
  */
-export function splitMarkdownAst(root: Root, fits: Fits): Root[] {
-  if (fits(root)) {
+export async function splitMarkdownAst(
+  root: Root,
+  fits: Fits
+): Promise<Root[]> {
+  if (await fits(root)) {
     return [root];
   }
-
-  const definitions: DefinitionNode[] = [];
-  const stripped = (stripDefinitions(root, definitions) ?? root) as Root;
-  if (definitions.length === 0) {
-    return splitRoot(root, fits);
+  const element: Element = [
+    ROOT_TAG,
+    {},
+    ...root.nodes.map(withoutEmptyContainers).filter(isNode),
+  ];
+  const parts = (await splitChildren(element, toRoot, fits, false)) ?? [
+    element,
+  ];
+  const trimmed: Root[] = [];
+  for (const part of parts) {
+    const start = trimEdgeText(part, "start");
+    const both = start && trimEdgeText(start, "end");
+    if (both && getNodeChildren(both).length > 0) {
+      trimmed.push(toRoot(both));
+    }
   }
-  const withDefinitions = definitionAppender(definitions);
-  return splitRoot(stripped, (part) => fits(withDefinitions(part))).map(
-    withDefinitions
-  );
+  return trimmed;
+}
+
+/**
+ * Copy `node` without containers that have nothing in them, such as a
+ * blockquote that only held a link definition. They would render a stray `>`
+ * or list marker. Subtrees without empty containers are reused.
+ */
+function withoutEmptyContainers(node: Content): Content | null {
+  const tag = getNodeTag(node);
+  if (tag === undefined || LEAF_TAGS.has(tag)) {
+    return node;
+  }
+  const children = getNodeChildren(node);
+  const kept = children.map(withoutEmptyContainers).filter(isNode);
+  if (kept.length === 0) {
+    return null;
+  }
+  const unchanged = kept.every((child, index) => child === children[index]);
+  return unchanged && kept.length === children.length
+    ? node
+    : [tag, getNodeAttributes(node), ...kept];
 }
 
 /**
@@ -79,54 +123,35 @@ export function splitMarkdownAst(root: Root, fits: Fits): Root[] {
 export function splitText(
   value: string,
   fits: (value: string) => boolean
-): string[] {
+): Promise<string[]> {
   return splitValue(value, (part) => fits(part), TEXT_BREAKS);
-}
-
-function splitRoot(root: Root, fits: Fits): Root[] {
-  const parts = (splitChildren(root, (node) => node as Root, fits) ?? [
-    root,
-  ]) as Root[];
-  const trimmed: Root[] = [];
-  for (const part of parts) {
-    const start = trimEdgeText(part, "start");
-    const both = start && trimEdgeText(start, "end");
-    if (both && (both as Root).children.length > 0) {
-      trimmed.push(both as Root);
-    }
-  }
-  return trimmed;
 }
 
 /**
  * Trim whitespace from the text at the start or end of `node`, copying the
  * path to it. A split between inline nodes can leave a part starting or
- * ending with a space, which rich-message markdown would encode as `&#x20;`.
- * Trimming only shortens a part, so it still fits.
+ * ending with a space. Trimming only shortens a part, so it still fits.
  *
- * Returns `null` when trimming empties the node. An empty text node makes
- * remark-stringify emit `&#xNAN;` before emphasis that starts with
- * punctuation, and an empty paragraph, list item, or blockquote renders a
- * stray marker, so the parent drops it and trims the next edge node. Table
- * cells are kept empty instead, so a row keeps its columns.
+ * Returns `null` when trimming empties the node. An empty paragraph, list
+ * item, or blockquote renders a stray marker, so the parent drops it and
+ * trims the next edge node. Table cells are kept empty instead, so a row
+ * keeps its columns.
  */
-function trimEdgeText(node: Nodes, edge: "start" | "end"): Nodes | null {
-  if (node.type === "text") {
-    const value =
-      edge === "start" ? node.value.trimStart() : node.value.trimEnd();
-    if (value === node.value) {
-      return node;
-    }
-    return value ? { ...node, value } : null;
+function trimEdgeText(node: Content, edge: "start" | "end"): Content | null {
+  if (typeof node === "string") {
+    const value = edge === "start" ? node.trimStart() : node.trimEnd();
+    return value || null;
   }
-  if (!("children" in node) || node.children.length === 0) {
+  const tag = getNodeTag(node) ?? "";
+  const children = getNodeChildren(node);
+  // Whitespace in code is content.
+  if (children.length === 0 || tag === "pre" || tag === "code") {
     return node;
   }
-  const children = [...node.children] as Nodes[];
   let changed = false;
   while (children.length > 0) {
     const index = edge === "start" ? 0 : children.length - 1;
-    const child = children[index] as Nodes;
+    const child = children[index] as Content;
     const trimmed = trimEdgeText(child, edge);
     if (trimmed === child) {
       break;
@@ -141,126 +166,32 @@ function trimEdgeText(node: Nodes, edge: "start" | "end"): Nodes | null {
   if (!changed) {
     return node;
   }
-  if (
-    children.length === 0 &&
-    node.type !== "root" &&
-    node.type !== "tableCell"
-  ) {
+  if (children.length === 0 && ![ROOT_TAG, "th", "td"].includes(tag)) {
     return null;
   }
-  return { ...node, children } as Nodes;
-}
-
-/**
- * Copy `node` without its `definition` and `footnoteDefinition` descendants,
- * collecting them in document order. Subtrees without definitions are reused.
- */
-function stripDefinitions(node: Nodes, found: DefinitionNode[]): Nodes | null {
-  if (!("children" in node)) {
-    return node;
-  }
-  let changed = false;
-  const children: Nodes[] = [];
-  for (const child of node.children as Nodes[]) {
-    if (child.type === "definition" || child.type === "footnoteDefinition") {
-      found.push(child);
-      changed = true;
-      continue;
-    }
-    const stripped = stripDefinitions(child, found);
-    changed ||= stripped !== child;
-    if (stripped) {
-      children.push(stripped);
-    }
-  }
-  if (!changed) {
-    return node;
-  }
-  // A container that only held definitions would render as a stray `>` or
-  // list marker, so drop it. The root is always kept.
-  if (children.length === 0 && node.type !== "root") {
-    return null;
-  }
-  return { ...node, children } as Nodes;
-}
-
-/**
- * Returns a function that appends to a part the definitions its references
- * use, including those referenced from a footnote it carries, in document
- * order. Definitions that nothing references render nothing, so they are
- * dropped.
- */
-function definitionAppender(
-  definitions: DefinitionNode[]
-): (part: Root) => Root {
-  const links = new Map<string, DefinitionNode>();
-  const footnotes = new Map<string, DefinitionNode>();
-  for (const definition of definitions) {
-    const byId = definition.type === "definition" ? links : footnotes;
-    // As in markdown, the first definition of an identifier wins.
-    if (!byId.has(definition.identifier)) {
-      byId.set(definition.identifier, definition);
-    }
-  }
-
-  const definitionFor = (node: Nodes): DefinitionNode | undefined => {
-    if (node.type === "linkReference" || node.type === "imageReference") {
-      return links.get(node.identifier);
-    }
-    if (node.type === "footnoteReference") {
-      return footnotes.get(node.identifier);
-    }
-    return;
-  };
-
-  return (part) => {
-    const used = new Set<DefinitionNode>();
-    const visit = (node: Nodes): void => {
-      const definition = definitionFor(node);
-      if (definition && !used.has(definition)) {
-        used.add(definition);
-        visit(definition);
-      }
-      if ("children" in node) {
-        for (const child of node.children as Nodes[]) {
-          visit(child);
-        }
-      }
-    };
-    visit(part);
-    if (used.size === 0) {
-      return part;
-    }
-    return {
-      ...part,
-      children: [
-        ...part.children,
-        ...definitions.filter((definition) => used.has(definition)),
-      ],
-    } as Root;
-  };
+  return [tag, getNodeAttributes(node), ...children];
 }
 
 /**
  * Split `value` into parts that satisfy `fits`. `first` is set while sizing
  * the first part.
  */
-function splitValue(
+async function splitValue(
   value: string,
-  fits: (value: string, first: boolean) => boolean,
+  fits: (value: string, first: boolean) => boolean | Promise<boolean>,
   rules: BreakRules
-): string[] {
+): Promise<string[]> {
   const parts: string[] = [];
   let rest = value;
 
   while (rest.length > 0) {
     const first = parts.length === 0;
-    if (fits(rest, first)) {
+    if (await fits(rest, first)) {
       parts.push(rest);
       break;
     }
 
-    const max = largestFitting(rest.length - 1, (length) =>
+    const max = await largestFitting(rest.length - 1, (length) =>
       fits(rest.slice(0, length), first)
     );
     if (max === 0) {
@@ -287,20 +218,23 @@ function splitValue(
  * monotonic and `test(0)` holds. Gallops from 1 so each probe stays close to
  * the size of one part instead of the whole remaining message.
  */
-function largestFitting(max: number, test: (n: number) => boolean): number {
-  if (max < 1 || !test(1)) {
+async function largestFitting(
+  max: number,
+  test: (n: number) => boolean | Promise<boolean>
+): Promise<number> {
+  if (max < 1 || !(await test(1))) {
     return 0;
   }
   let low = 1;
   let high = 2;
-  while (high <= max && test(high)) {
+  while (high <= max && (await test(high))) {
     low = high;
     high *= 2;
   }
   high = Math.min(high, max + 1);
   while (high - low > 1) {
     const mid = Math.floor((low + high) / 2);
-    if (test(mid)) {
+    if (await test(mid)) {
       low = mid;
     } else {
       high = mid;
@@ -344,77 +278,108 @@ function hardBreak(value: string, max: number): number {
   return code >= 0xd8_00 && code <= 0xdb_ff ? max - 1 : max;
 }
 
-function splitNode(node: Nodes, wrap: Wrap, fits: Fits): Nodes[] | null {
-  if ("children" in node && node.children.length > 0) {
-    return splitChildren(node, wrap, fits);
-  }
-  if ("value" in node && typeof node.value === "string" && node.value) {
-    const valueNode = node as ValueNode;
+async function splitNode(
+  node: Content,
+  wrap: Wrap,
+  fits: Fits,
+  inCode: boolean
+): Promise<Content[] | null> {
+  if (typeof node === "string") {
+    if (!node) {
+      return [node];
+    }
     return splitValue(
-      valueNode.value,
-      (value, first) => fits(wrap({ ...valueNode, value } as Nodes, first)),
-      node.type === "code" ? CODE_BREAKS : TEXT_BREAKS
-    ).map((value) => ({ ...valueNode, value }) as Nodes);
+      node,
+      (value, first) => fits(wrap(value, first)),
+      inCode ? CODE_BREAKS : TEXT_BREAKS
+    );
+  }
+  if (rowsOf(node).length > 0) {
+    return splitChildren(
+      node as Element,
+      wrap,
+      fits,
+      inCode || getNodeTag(node) === "pre"
+    );
   }
   return [node];
 }
 
-function withChildren(
-  node: ParentNode,
-  children: Nodes[],
-  firstIndex: number
-): Nodes {
-  const copy = { ...node, children } as ParentNode;
-  // Keep ordered list numbering continuous across parts.
-  if (copy.type === "list" && copy.ordered && node.type === "list") {
-    copy.start = (node.start ?? 1) + firstIndex;
+/**
+ * The children `splitChildren` packs: a table's rows, so the header row can
+ * be repeated, and every other element's children.
+ */
+function rowsOf(node: Content): Content[] {
+  if (isTableNode(node)) {
+    return getNodeChildren(node).flatMap(getNodeChildren);
   }
-  return copy as Nodes;
+  return getNodeChildren(node);
 }
 
-function emptyCell(): Nodes {
-  return { type: "tableCell", children: [] } as Nodes;
+function withChildren(
+  node: Element,
+  children: Content[],
+  firstIndex: number
+): Content {
+  const [tag, attributes] = node;
+  if (isTableNode(node)) {
+    const [header, ...body] = children;
+    return [
+      tag,
+      attributes,
+      ["thead", {}, ...(header ? [header] : [])],
+      ["tbody", {}, ...body],
+    ];
+  }
+  // Keep ordered list numbering continuous across parts.
+  if (tag === "ol") {
+    const start = Number(attributes.start ?? 1) + firstIndex;
+    return [tag, { ...attributes, start: String(start) }, ...children];
+  }
+  return [tag, attributes, ...children];
 }
 
 /**
  * Returns how to copy `node` with the children starting at `firstIndex`, and
  * the table header row that every later part repeats, if any.
  */
-function pieceBuilder(
-  node: ParentNode,
+async function pieceBuilder(
+  node: Element,
   wrap: Wrap,
   fits: Fits
-): { build: Build; header: Nodes | undefined } {
-  const children = node.children as Nodes[];
+): Promise<{ build: Build; header: Content | undefined }> {
+  const children = rowsOf(node);
 
   // Repeat a table's header row in every part, so later parts don't promote
   // their first body row to the header. Skip it when the header can't share a
   // part with any whole body row, since repeating it would split every row
   // apart.
   const [firstChild, ...bodyRows] = children;
-  const header =
-    node.type === "table" &&
-    firstChild &&
-    bodyRows.some((row) =>
-      fits(wrap(withChildren(node, [firstChild, row], 0), false))
-    )
-      ? firstChild
-      : undefined;
+  let header: Content | undefined;
+  if (isTableNode(node) && firstChild) {
+    for (const row of bodyRows) {
+      if (await fits(wrap(withChildren(node, [firstChild, row], 0), false))) {
+        header = firstChild;
+        break;
+      }
+    }
+  }
 
   const build: Build = (items, firstIndex) => {
     if (header && firstIndex > 0) {
       return withChildren(node, [header, ...items], firstIndex);
     }
-    if (node.type === "tableRow") {
+    if (getNodeTag(node) === "tr") {
       // Pad part of a split row with empty cells so each cell stays in its
       // column.
+      const cell = (): Content => [getNodeTag(children[0]) ?? "td", {}];
       const after = children.length - firstIndex - items.length;
       return withChildren(
         node,
         [
-          ...Array.from({ length: firstIndex }, emptyCell),
+          ...Array.from({ length: firstIndex }, cell),
           ...items,
-          ...Array.from({ length: after }, emptyCell),
+          ...Array.from({ length: after }, cell),
         ],
         firstIndex
       );
@@ -435,26 +400,27 @@ function pieceBuilder(
  * own. The ancestor then sends those siblings alone instead of splitting a
  * child that didn't need it.
  */
-function splitChildren(
-  node: ParentNode,
+async function splitChildren(
+  node: Element,
   wrap: Wrap,
-  fits: Fits
-): Nodes[] | null {
-  const children = node.children as Nodes[];
-  const { build, header } = pieceBuilder(node, wrap, fits);
-  const pieces: Nodes[] = [];
-  const fitsAs = (items: Nodes[], firstIndex: number): boolean =>
+  fits: Fits,
+  inCode: boolean
+): Promise<Content[] | null> {
+  const children = rowsOf(node);
+  const { build, header } = await pieceBuilder(node, wrap, fits);
+  const pieces: Content[] = [];
+  const fitsAs = (items: Content[], firstIndex: number) =>
     fits(wrap(build(items, firstIndex), pieces.length === 0));
 
   // Children packed into the piece being built, starting at `batchStart`. The
   // first item may be the last piece of a split child.
-  let batch: Nodes[] = [];
+  let batch: Content[] = [];
   let batchStart = 0;
   let index = 0;
 
   while (index < children.length) {
     const start = batch.length > 0 ? batchStart : index;
-    const taken = largestFitting(children.length - index, (n) =>
+    const taken = await largestFitting(children.length - index, (n) =>
       fitsAs([...batch, ...children.slice(index, index + n)], start)
     );
     batch = [...batch, ...children.slice(index, index + taken)];
@@ -462,11 +428,11 @@ function splitChildren(
     index += taken;
 
     const child = children[index];
-    if (!child) {
+    if (child === undefined) {
       break;
     }
 
-    if (fits(wrap(build([child], index), false))) {
+    if (await fits(wrap(build([child], index), false))) {
       // An empty batch, or a lone repeated table header, means only the
       // ancestors' packed siblings keep the child out of this part.
       if (batch.length === 0 || (header && batch.length === 1 && start === 0)) {
@@ -478,7 +444,7 @@ function splitChildren(
     }
 
     const childIndex = index;
-    const splitChild = (leading: Nodes[], leadingStart: number) => {
+    const splitChild = (leading: Content[], leadingStart: number) => {
       const first = pieces.length === 0;
       return splitNode(
         child,
@@ -486,14 +452,17 @@ function splitChildren(
           childFirst
             ? wrap(build([...leading, piece], leadingStart), first)
             : wrap(build([piece], childIndex), false),
-        fits
+        fits,
+        inCode
       );
     };
 
-    let childPieces = splitChild(batch, start);
+    let childPieces = await splitChild(batch, start);
     if (batch.length > 0) {
       const head = childPieces?.[0];
-      if (!(head && fitsAs([...batch, head], batchStart))) {
+      if (
+        !(head !== undefined && (await fitsAs([...batch, head], batchStart)))
+      ) {
         // Nothing of the child fits beside the batch, so send the batch alone.
         // A lone table header is dropped instead, since `build` repeats it
         // before every later piece.
@@ -501,17 +470,17 @@ function splitChildren(
           pieces.push(build(batch, batchStart));
         }
         batch = [];
-        childPieces = splitChild([], childIndex);
+        childPieces = await splitChild([], childIndex);
       }
     }
     if (!childPieces) {
       return null;
     }
 
-    const [head, ...rest] = childPieces as [Nodes, ...Nodes[]];
+    const [head, ...rest] = childPieces as [Content, ...Content[]];
     const headStart = batch.length > 0 ? batchStart : childIndex;
     const last = rest.pop();
-    if (last) {
+    if (last !== undefined) {
       pieces.push(build([...batch, head], headStart));
       for (const piece of rest) {
         pieces.push(build([piece], childIndex));

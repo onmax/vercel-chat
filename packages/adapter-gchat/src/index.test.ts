@@ -229,11 +229,11 @@ threadIdContract<GoogleChatThreadId>({
 });
 
 describe("GoogleChatAdapter", () => {
-  it("should export createGoogleChatAdapter function", () => {
+  it("should export createGoogleChatAdapter function", async () => {
     expect(typeof createGoogleChatAdapter).toBe("function");
   });
 
-  it("should create an adapter instance", () => {
+  it("should create an adapter instance", async () => {
     const adapter = createGoogleChatAdapter({
       credentials: TEST_CREDENTIALS,
       logger: mockLogger,
@@ -243,7 +243,7 @@ describe("GoogleChatAdapter", () => {
   });
 
   describe("thread ID encoding", () => {
-    it("should throw on invalid thread ID", () => {
+    it("should throw on invalid thread ID", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -271,7 +271,7 @@ describe("GoogleChatAdapter", () => {
       process.env = { ...savedEnv };
     });
 
-    it("should use provided userName", () => {
+    it("should use provided userName", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -280,7 +280,7 @@ describe("GoogleChatAdapter", () => {
       expect(adapter.userName).toBe("mybot");
     });
 
-    it("should default userName to 'bot'", () => {
+    it("should default userName to 'bot'", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -288,7 +288,7 @@ describe("GoogleChatAdapter", () => {
       expect(adapter.userName).toBe("bot");
     });
 
-    it("should throw when no auth is configured", () => {
+    it("should throw when no auth is configured", async () => {
       expect(() => {
         new GoogleChatAdapter({
           logger: mockLogger,
@@ -296,7 +296,7 @@ describe("GoogleChatAdapter", () => {
       }).toThrow();
     });
 
-    it("should accept ADC config", () => {
+    it("should accept ADC config", async () => {
       const adapter = new GoogleChatAdapter({
         useApplicationDefaultCredentials: true,
         logger: mockLogger,
@@ -304,7 +304,7 @@ describe("GoogleChatAdapter", () => {
       expect(adapter.name).toBe("gchat");
     });
 
-    it("should default logger when not provided", () => {
+    it("should default logger when not provided", async () => {
       const adapter = new GoogleChatAdapter({
         useApplicationDefaultCredentials: true,
       });
@@ -360,32 +360,32 @@ describe("GoogleChatAdapter", () => {
       process.env = { ...savedEnv };
     });
 
-    it("should throw when no auth is configured and no env vars set", () => {
+    it("should throw when no auth is configured and no env vars set", async () => {
       expect(() => new GoogleChatAdapter()).toThrow(
         "Authentication is required"
       );
     });
 
-    it("should resolve credentials from GOOGLE_CHAT_CREDENTIALS env var", () => {
+    it("should resolve credentials from GOOGLE_CHAT_CREDENTIALS env var", async () => {
       process.env.GOOGLE_CHAT_CREDENTIALS = JSON.stringify(TEST_CREDENTIALS);
       const adapter = new GoogleChatAdapter();
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should resolve ADC from GOOGLE_CHAT_USE_ADC env var", () => {
+    it("should resolve ADC from GOOGLE_CHAT_USE_ADC env var", async () => {
       process.env.GOOGLE_CHAT_USE_ADC = "true";
       const adapter = new GoogleChatAdapter();
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should resolve pubsubTopic from GOOGLE_CHAT_PUBSUB_TOPIC env var", () => {
+    it("should resolve pubsubTopic from GOOGLE_CHAT_PUBSUB_TOPIC env var", async () => {
       process.env.GOOGLE_CHAT_CREDENTIALS = JSON.stringify(TEST_CREDENTIALS);
       process.env.GOOGLE_CHAT_PUBSUB_TOPIC = "projects/test/topics/test";
       const adapter = new GoogleChatAdapter();
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should resolve botUserId from GOOGLE_CHAT_BOT_USER_ID", () => {
+    it("should resolve botUserId from GOOGLE_CHAT_BOT_USER_ID", async () => {
       process.env.GOOGLE_CHAT_CREDENTIALS = JSON.stringify(TEST_CREDENTIALS);
       process.env.GOOGLE_CHAT_BOT_USER_ID = "users/BOT_ENV";
 
@@ -394,14 +394,14 @@ describe("GoogleChatAdapter", () => {
       expect(adapter.botUserId).toBe("users/BOT_ENV");
     });
 
-    it("should resolve impersonateUser from GOOGLE_CHAT_IMPERSONATE_USER env var", () => {
+    it("should resolve impersonateUser from GOOGLE_CHAT_IMPERSONATE_USER env var", async () => {
       process.env.GOOGLE_CHAT_CREDENTIALS = JSON.stringify(TEST_CREDENTIALS);
       process.env.GOOGLE_CHAT_IMPERSONATE_USER = "user@example.com";
       const adapter = new GoogleChatAdapter();
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should prefer config credentials over env vars", () => {
+    it("should prefer config credentials over env vars", async () => {
       process.env.GOOGLE_CHAT_USE_ADC = "true";
       const adapter = new GoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
@@ -409,14 +409,14 @@ describe("GoogleChatAdapter", () => {
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should resolve apiUrl from GOOGLE_CHAT_API_URL env var", () => {
+    it("should resolve apiUrl from GOOGLE_CHAT_API_URL env var", async () => {
       process.env.GOOGLE_CHAT_CREDENTIALS = JSON.stringify(TEST_CREDENTIALS);
       process.env.GOOGLE_CHAT_API_URL = "https://custom-chat.googleapis.com";
       const adapter = new GoogleChatAdapter();
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should accept apiUrl config", () => {
+    it("should accept apiUrl config", async () => {
       const adapter = new GoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         apiUrl: "https://custom-chat.googleapis.com",
@@ -434,7 +434,7 @@ describe("GoogleChatAdapter", () => {
         senderName: "users/ALICE1",
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
 
       expect(msg.text).toContain("Hello world");
       expect(msg.author.fullName).toBe("Alice");
@@ -442,13 +442,13 @@ describe("GoogleChatAdapter", () => {
       expect(msg.author.isBot).toBe(false);
     });
 
-    it("should throw when event has no messagePayload", () => {
+    it("should throw when event has no messagePayload", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
       });
 
-      expect(() => adapter.parseMessage({})).toThrow();
+      await expect(adapter.parseMessage({})).rejects.toThrow();
     });
 
     it("should detect bot sender", async () => {
@@ -458,7 +458,7 @@ describe("GoogleChatAdapter", () => {
         senderDisplayName: "BotUser",
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
 
       expect(msg.author.isBot).toBe(true);
     });
@@ -476,7 +476,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
 
       expect(msg.attachments).toHaveLength(1);
       expect(msg.attachments[0].type).toBe("image");
@@ -502,7 +502,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
 
       expect(msg.attachments).toHaveLength(2);
       expect(msg.attachments[0].type).toBe("video");
@@ -532,7 +532,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.attachments[0].fetchData).toBeDefined();
 
       const data = await msg.attachments[0].fetchData?.();
@@ -565,7 +565,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.attachments[0].fetchData).toBeDefined();
 
       const data = await msg.attachments[0].fetchData?.();
@@ -604,7 +604,7 @@ describe("GoogleChatAdapter", () => {
           ],
         });
 
-        const msg = adapter.parseMessage(event);
+        const msg = await adapter.parseMessage(event);
         await expect(msg.attachments[0].fetchData?.()).rejects.toThrow(
           "resource expired"
         );
@@ -639,7 +639,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       await expect(msg.attachments[0].fetchData?.()).rejects.toBeInstanceOf(
         AdapterRateLimitError
       );
@@ -658,7 +658,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.attachments[0].fetchData).toBeUndefined();
       expect(msg.attachments[0].url).toBe("https://example.com/photo.png");
     });
@@ -686,7 +686,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.attachments[0].fetchData).toBeUndefined();
     });
   });
@@ -716,7 +716,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
 
       expect(msg.text).toContain("@mybot");
       expect(msg.text).not.toContain("@Chat SDK Demo");
@@ -746,7 +746,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const message = adapter.parseMessage(event);
+      const message = await adapter.parseMessage(event);
 
       expect(adapter.botUserId).toBeUndefined();
       expect(message.text).toBe("@BotName hi");
@@ -776,7 +776,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const message = adapter.parseMessage(event);
+      const message = await adapter.parseMessage(event);
 
       expect(adapter.botUserId).toBe("users/FIRST_BOT");
       expect(message.text).toBe("@AnotherBot hi");
@@ -819,7 +819,7 @@ describe("GoogleChatAdapter", () => {
         ],
       });
 
-      const message = adapter.parseMessage(event);
+      const message = await adapter.parseMessage(event);
 
       expect(message.text).toBe("@OtherBot @ourbot hi");
       expect(adapter.botUserId).toBe("users/OUR_BOT");
@@ -838,7 +838,7 @@ describe("GoogleChatAdapter", () => {
         senderDisplayName: "MyBot",
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.author.isMe).toBe(true);
     });
 
@@ -853,7 +853,7 @@ describe("GoogleChatAdapter", () => {
         senderDisplayName: "OtherBot",
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.author.isMe).toBe(false);
     });
 
@@ -865,7 +865,7 @@ describe("GoogleChatAdapter", () => {
         senderDisplayName: "SomeBot",
       });
 
-      const msg = adapter.parseMessage(event);
+      const msg = await adapter.parseMessage(event);
       expect(msg.author.isMe).toBe(true);
     });
   });
@@ -1560,7 +1560,9 @@ describe("GoogleChatAdapter", () => {
         "a webhook message",
         async (body) => {
           const { adapter } = await createInitializedAdapter();
-          return adapter.parseMessage(makeMessageEvent({ messageText: body }));
+          return await adapter.parseMessage(
+            makeMessageEvent({ messageText: body })
+          );
         },
       ],
       [
@@ -1614,16 +1616,9 @@ describe("GoogleChatAdapter", () => {
       const message = await receive(MARKDOWN_BODY);
 
       expect(message.text).toBe(MARKDOWN_PLAIN_TEXT);
-      expect(message.formatted).toMatchObject({
-        children: [
-          {
-            type: "paragraph",
-            children: expect.arrayContaining([
-              expect.objectContaining({ type: "strong" }),
-            ]),
-          },
-        ],
-      });
+      expect(message.formatted.nodes).toEqual([
+        expect.arrayContaining(["p", expect.arrayContaining(["strong"])]),
+      ]);
       expect(toAstSpy).toHaveBeenCalledOnce();
     });
 
@@ -2093,7 +2088,7 @@ describe("GoogleChatAdapter", () => {
   });
 
   describe("handleGoogleChatError", () => {
-    it("should throw AdapterRateLimitError for 429", () => {
+    it("should throw AdapterRateLimitError for 429", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -2107,7 +2102,7 @@ describe("GoogleChatAdapter", () => {
       }).toThrow(AdapterRateLimitError);
     });
 
-    it("should rethrow the original error for non-429 codes", () => {
+    it("should rethrow the original error for non-429 codes", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -2123,7 +2118,7 @@ describe("GoogleChatAdapter", () => {
       expect(thrown).toBe(originalError);
     });
 
-    it("should log context information", () => {
+    it("should log context information", async () => {
       const localLogger = createMockLogger();
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
@@ -2224,7 +2219,7 @@ describe("GoogleChatAdapter", () => {
   });
 
   describe("channelIdFromThreadId", () => {
-    it("should derive channel ID from thread ID", () => {
+    it("should derive channel ID from thread ID", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -2241,24 +2236,16 @@ describe("GoogleChatAdapter", () => {
   });
 
   describe("renderFormatted", () => {
-    it("should convert mdast to platform format", () => {
+    it("should convert the AST to platform format", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
       });
 
       // Simple root with paragraph + text
-      const content = {
-        type: "root" as const,
-        children: [
-          {
-            type: "paragraph" as const,
-            children: [{ type: "text" as const, value: "Hello world" }],
-          },
-        ],
-      };
+      const content = root([paragraph([text("Hello world")])]);
 
-      const result = adapter.renderFormatted(content);
+      const result = await adapter.renderFormatted(content);
       expect(result).toContain("Hello world");
     });
   });
@@ -2896,7 +2883,7 @@ describe("GoogleChatAdapter", () => {
   });
 
   describe("getAuthOptions", () => {
-    it("should return credentials-based auth options", () => {
+    it("should return credentials-based auth options", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -2910,7 +2897,7 @@ describe("GoogleChatAdapter", () => {
       });
     });
 
-    it("should return ADC auth options", () => {
+    it("should return ADC auth options", async () => {
       const adapter = new GoogleChatAdapter({
         useApplicationDefaultCredentials: true,
         logger: mockLogger,
@@ -2923,7 +2910,7 @@ describe("GoogleChatAdapter", () => {
       });
     });
 
-    it("should return custom auth options", () => {
+    it("should return custom auth options", async () => {
       const mockAuth = { getAccessToken: vi.fn() };
       const adapter = createGoogleChatAdapter({
         auth: mockAuth as any,
@@ -2936,7 +2923,7 @@ describe("GoogleChatAdapter", () => {
   });
 
   describe("createGoogleChatAdapter factory", () => {
-    it("should throw when no auth method is provided", () => {
+    it("should throw when no auth method is provided", async () => {
       const originalCreds = process.env.GOOGLE_CHAT_CREDENTIALS;
       const originalAdc = process.env.GOOGLE_CHAT_USE_ADC;
       try {
@@ -2955,7 +2942,7 @@ describe("GoogleChatAdapter", () => {
       }
     });
 
-    it("should create with custom auth", () => {
+    it("should create with custom auth", async () => {
       const mockAuth = { getAccessToken: vi.fn() };
       const adapter = createGoogleChatAdapter({
         auth: mockAuth as any,
@@ -2964,7 +2951,7 @@ describe("GoogleChatAdapter", () => {
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should pick up pubsubTopic from config", () => {
+    it("should pick up pubsubTopic from config", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -2975,7 +2962,7 @@ describe("GoogleChatAdapter", () => {
       );
     });
 
-    it("should create with ADC config", () => {
+    it("should create with ADC config", async () => {
       const adapter = createGoogleChatAdapter({
         useApplicationDefaultCredentials: true,
         logger: mockLogger,
@@ -2983,7 +2970,7 @@ describe("GoogleChatAdapter", () => {
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should create with GOOGLE_CHAT_CREDENTIALS env var", () => {
+    it("should create with GOOGLE_CHAT_CREDENTIALS env var", async () => {
       const originalEnv = process.env.GOOGLE_CHAT_CREDENTIALS;
       try {
         process.env.GOOGLE_CHAT_CREDENTIALS = JSON.stringify(TEST_CREDENTIALS);
@@ -2999,7 +2986,7 @@ describe("GoogleChatAdapter", () => {
       }
     });
 
-    it("should create with GOOGLE_CHAT_USE_ADC env var", () => {
+    it("should create with GOOGLE_CHAT_USE_ADC env var", async () => {
       const originalEnv = process.env.GOOGLE_CHAT_USE_ADC;
       try {
         process.env.GOOGLE_CHAT_USE_ADC = "true";
@@ -3015,14 +3002,14 @@ describe("GoogleChatAdapter", () => {
       }
     });
 
-    it("should use default logger when none provided", () => {
+    it("should use default logger when none provided", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
       });
       expect(adapter).toBeInstanceOf(GoogleChatAdapter);
     });
 
-    it("should pick up impersonateUser from config", () => {
+    it("should pick up impersonateUser from config", async () => {
       const adapter = createGoogleChatAdapter({
         credentials: TEST_CREDENTIALS,
         logger: mockLogger,
@@ -3047,7 +3034,7 @@ describe("GoogleChatAdapter", () => {
       await adapter.initialize(mockChat);
     });
 
-    it("should cache user info from direct webhook messages", () => {
+    it("should cache user info from direct webhook messages", async () => {
       const event: GoogleChatEvent = {
         chat: {
           messagePayload: {
@@ -3068,7 +3055,7 @@ describe("GoogleChatAdapter", () => {
         },
       };
 
-      adapter.parseMessage(event);
+      await adapter.parseMessage(event);
 
       // Verify user info was cached
       expect(mockState.set).toHaveBeenCalledWith(
@@ -3083,7 +3070,7 @@ describe("GoogleChatAdapter", () => {
       );
     });
 
-    it("should not cache user info when displayName is unknown", () => {
+    it("should not cache user info when displayName is unknown", async () => {
       const event: GoogleChatEvent = {
         chat: {
           messagePayload: {
@@ -3102,7 +3089,7 @@ describe("GoogleChatAdapter", () => {
         },
       };
 
-      adapter.parseMessage(event);
+      await adapter.parseMessage(event);
 
       // Verify user info was NOT cached
       expect(mockState.set).not.toHaveBeenCalledWith(
@@ -3641,7 +3628,7 @@ describe("GoogleChatAdapter", () => {
       );
     });
 
-    it("should not throw in constructor when only endpointUrl is configured", () => {
+    it("should not throw in constructor when only endpointUrl is configured", async () => {
       // endpointUrl alone is enough for direct-webhook verification when
       // the Chat app uses "HTTP endpoint URL" authentication audience.
       const previous = process.env.GOOGLE_CHAT_DISABLE_SIGNATURE_VERIFICATION;
@@ -3661,7 +3648,7 @@ describe("GoogleChatAdapter", () => {
       }
     });
 
-    it("should fail-closed in constructor when no JWT verification config is provided", () => {
+    it("should fail-closed in constructor when no JWT verification config is provided", async () => {
       const previous = process.env.GOOGLE_CHAT_DISABLE_SIGNATURE_VERIFICATION;
       // Any value other than "true" disables the opt-out and should make the
       // constructor refuse to start.

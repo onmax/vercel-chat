@@ -1207,9 +1207,9 @@ describe("XAdapter", () => {
   });
 
   describe("parseMessage", () => {
-    it("rebuilds a post message from raw", () => {
+    it("rebuilds a post message from raw", async () => {
       const adapter = createAdapter();
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         kind: "post",
         post: {
           author_id: "111",
@@ -1226,9 +1226,9 @@ describe("XAdapter", () => {
       expect(message.isMention).toBeUndefined();
     });
 
-    it("rebuilds a dm message from raw, threaded by participant", () => {
+    it("rebuilds a dm message from raw, threaded by participant", async () => {
       const adapter = createAdapter();
-      const message = adapter.parseMessage({
+      const message = await adapter.parseMessage({
         dmEvent: {
           id: "9001",
           recipient_id: BOT_USER_ID,

@@ -2,11 +2,11 @@
  * Core types for chat-sdk
  */
 
-import type { Root } from "mdast";
 import type { CardElement } from "./cards";
 import type { SerializedChannel } from "./channel";
 import type { ChatElement } from "./jsx-runtime";
 import type { Logger, LogLevel } from "./logger";
+import type { Root } from "./markdown";
 import type { Message } from "./message";
 import type { ModalElement, SelectOptionElement } from "./modals";
 import type { PostableObject } from "./postable-object";
@@ -487,7 +487,7 @@ export interface Adapter<TThreadId = unknown, TRawMessage = unknown> {
   ): Promise<{ viewId: string }>;
 
   /** Parse platform message format to normalized format */
-  parseMessage(raw: TRawMessage): Message<TRawMessage>;
+  parseMessage(raw: TRawMessage): Promise<Message<TRawMessage>>;
   /**
    * @deprecated Renamed to {@link Adapter.persistThreadHistory}. Both flags
    * are read for backwards compatibility; either being `true` enables
@@ -563,7 +563,7 @@ export interface Adapter<TThreadId = unknown, TRawMessage = unknown> {
   ): Promise<void>;
 
   /** Render formatted content to platform-specific string */
-  renderFormatted(content: FormattedContent): string;
+  renderFormatted(content: FormattedContent): string | Promise<string>;
 
   reply?(
     threadId: string,
@@ -1643,7 +1643,7 @@ export interface FetchResult<TRawMessage = unknown> {
 // =============================================================================
 
 /**
- * Formatted content using mdast AST.
+ * Formatted content as a Comark document.
  * This is the canonical representation of message formatting.
  */
 export type FormattedContent = Root;
@@ -1797,7 +1797,7 @@ export type AdapterPostableMessage =
  * - `string` - Raw text, passed through as-is to the platform
  * - `{ raw: string }` - Explicit raw text, passed through as-is
  * - `{ markdown: string }` - Markdown text, converted to platform format
- * - `{ ast: Root }` - mdast AST, converted to platform format
+ * - `{ ast: Root }` - Comark document, converted to platform format
  * - `{ card: CardElement }` - Rich card with buttons (Block Kit / Adaptive Cards / GChat Cards)
  * - `CardElement` - Direct card element
  * - `AsyncIterable<string>` - Streaming text (e.g., from AI SDK's textStream)
@@ -1848,7 +1848,7 @@ export interface PostableMarkdown {
 export interface PostableAst {
   /** Mark the message as AI-generated. Adapters with a native AI label (currently Teams) show it; others ignore it. */
   aiGenerated?: boolean;
-  /** mdast AST, converted to platform format */
+  /** Comark document, converted to platform format */
   ast: Root;
   /** File/image attachments */
   attachments?: Attachment[];
@@ -2892,7 +2892,7 @@ export interface UserHistoryConfig {
    * Omit for no expiry.
    */
   retention?: number | DurationString;
-  /** Persist `formatted` (mdast AST). Default false. */
+  /** Persist `formatted` (Comark document). Default false. */
   storeFormatted?: boolean;
 }
 
@@ -3060,7 +3060,7 @@ export type TranscriptRole = "user" | "assistant" | "system";
  * @deprecated Use {@link HistoryEntry} instead.
  */
 export interface TranscriptEntry {
-  /** mdast AST. Only present when `transcripts.storeFormatted` is true. */
+  /** Comark document. Only present when `transcripts.storeFormatted` is true. */
   formatted?: FormattedContent;
   /**
    * UUID assigned by the SDK at append time. Opaque — not lexicographically
@@ -3104,7 +3104,7 @@ export interface TranscriptsConfig {
    * (matches `appendToList` semantics). Omit for no expiry.
    */
   retention?: number | DurationString;
-  /** Persist `formatted` (mdast). Default false to keep storage small. */
+  /** Persist `formatted` (Comark document). Default false to keep storage small. */
   storeFormatted?: boolean;
 }
 

@@ -48,7 +48,7 @@ async function setup(fetch: typeof globalThis.fetch) {
 }
 
 describe("Gmail history synchronization", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
   });
 

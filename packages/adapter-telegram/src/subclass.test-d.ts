@@ -43,7 +43,7 @@ describe("subclass extensibility", () => {
     expectTypeOf(
       SplitSubclass.prototype.sendNumber
     ).returns.resolves.toEqualTypeOf<number>();
-    expectTypeOf(SplitSubclass.prototype.split).returns.toEqualTypeOf<
+    expectTypeOf(SplitSubclass.prototype.split).returns.resolves.toEqualTypeOf<
       AdapterPostableMessage[] | null
     >();
     expectTypeOf(SplitSubclass.prototype.fits).returns.toEqualTypeOf<boolean>();

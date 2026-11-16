@@ -18,20 +18,18 @@ import {
 
 export class GitHubFormatConverter extends BaseFormatConverter {
   /**
-   * GitHub uses standard GFM, so we can use remark-stringify directly.
+   * GitHub uses standard GFM, so we can stringify the AST directly.
    * We just need to ensure @mentions are preserved.
    */
-  fromAst(ast: Root): string {
-    // Use standard markdown stringification
-    // remark-stringify handles GFM well
-    return stringifyMarkdown(ast).trim();
+  async fromAst(ast: Root): Promise<string> {
+    return (await stringifyMarkdown(ast)).trim();
   }
 
   /**
    * Parse GitHub markdown into an AST.
    * GitHub uses standard GFM, so we use the standard parser.
    */
-  toAst(markdown: string): Root {
+  toAst(markdown: string): Promise<Root> {
     return parseMarkdown(markdown);
   }
 
@@ -39,7 +37,9 @@ export class GitHubFormatConverter extends BaseFormatConverter {
    * Override renderPostable to handle @mentions in plain strings.
    * GitHub @mentions are already in the correct format (@username).
    */
-  override renderPostable(message: AdapterPostableMessage): string {
+  override async renderPostable(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

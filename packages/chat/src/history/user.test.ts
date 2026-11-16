@@ -106,7 +106,7 @@ describe("UserHistoryApiImpl", () => {
       const stored = await api.append(thread, msg);
 
       expect(stored?.formatted).toBeDefined();
-      expect(stored?.formatted?.type).toBe("root");
+      expect(stored?.formatted?.nodes).toBeInstanceOf(Array);
 
       const round = await api.list({ userKey: "u1" });
       expect(round[0]?.formatted).toEqual(stored?.formatted);
@@ -403,10 +403,10 @@ describe("UserHistoryApiImpl", () => {
   });
 
   describe("formatted round-trip", () => {
-    it("preserves mdast Root through state serialization", async () => {
+    it("preserves the Comark document through state serialization", async () => {
       api = new UserHistoryApiImpl(state, { storeFormatted: true });
       const thread = createTestThread();
-      const original = parseMarkdown("# Hello\n\n*world*");
+      const original = await parseMarkdown("# Hello\n\n*world*");
       const msg = createTestMessage("m1", "Hello world");
       msg.userKey = "u1";
       msg.formatted = original;

@@ -151,7 +151,7 @@ export class WebAdapter implements Adapter<WebThreadIdData, WebMessage> {
       return jsonError(400, "No usable content in last user message");
     }
 
-    const message = this.buildMessageFromUI(userMessage, threadId, user);
+    const message = await this.buildMessageFromUI(userMessage, threadId, user);
 
     const chat = this.chat;
     const run = { conversationId, runId: parsed.runId ?? generateId() };
@@ -188,7 +188,7 @@ export class WebAdapter implements Adapter<WebThreadIdData, WebMessage> {
     });
   }
 
-  parseMessage(raw: WebMessage): Message<WebMessage> {
+  async parseMessage(raw: WebMessage): Promise<Message<WebMessage>> {
     const text = extractText(raw);
     // The hot path uses buildMessageFromUI (which has WebUser context) and
     // does not call this method. Round-trip rehydration paths land here
@@ -214,7 +214,7 @@ export class WebAdapter implements Adapter<WebThreadIdData, WebMessage> {
       id: raw.id,
       threadId: "",
       text,
-      formatted: this.formatConverter.parseIncoming(text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(text)).formatted,
       raw,
       author,
       metadata: { dateSent: new Date(), edited: false },
@@ -250,7 +250,7 @@ export class WebAdapter implements Adapter<WebThreadIdData, WebMessage> {
     return true;
   }
 
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 
@@ -259,7 +259,7 @@ export class WebAdapter implements Adapter<WebThreadIdData, WebMessage> {
     message: AdapterPostableMessage
   ): Promise<RawMessage<WebMessage>> {
     const ctx = requireWebRequestContext();
-    const text = adapterPostableToText(message, this.formatConverter);
+    const text = await adapterPostableToText(message, this.formatConverter);
     const id = generateId();
     // Skip empty messages (e.g., a CardElement with no fallbackText) so
     // the client doesn't render a blank assistant bubble.
@@ -394,17 +394,17 @@ export class WebAdapter implements Adapter<WebThreadIdData, WebMessage> {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  protected buildMessageFromUI(
+  protected async buildMessageFromUI(
     uiMessage: WebMessage,
     threadId: string,
     user: WebUser
-  ): Message<WebMessage> {
+  ): Promise<Message<WebMessage>> {
     const text = extractText(uiMessage);
     return new Message<WebMessage>({
       id: uiMessage.id,
       threadId,
       text,
-      formatted: this.formatConverter.parseIncoming(text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(text)).formatted,
       raw: uiMessage,
       author: {
         userId: user.id,
@@ -452,10 +452,10 @@ function streamChunkToText(chunk: string | StreamChunk): string {
   return "";
 }
 
-function adapterPostableToText(
+async function adapterPostableToText(
   message: AdapterPostableMessage,
   formatConverter: WebFormatConverter
-): string {
+): Promise<string> {
   if (typeof message === "string") {
     return message;
   }

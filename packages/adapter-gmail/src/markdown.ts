@@ -10,12 +10,12 @@ import {
 import { cardToGmailText } from "./cards";
 
 export class GmailFormatConverter extends BaseFormatConverter {
-  toAst(value: string): Root {
+  async toAst(value: string): Promise<Root> {
     return root([paragraph([text(value)])]);
   }
 
-  fromAst(value: Root): string {
-    return stringifyMarkdown(value).trimEnd();
+  async fromAst(value: Root): Promise<string> {
+    return (await stringifyMarkdown(value)).trimEnd();
   }
 
   protected override cardToFallbackText(card: CardElement): string {

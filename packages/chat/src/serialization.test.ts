@@ -1104,7 +1104,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Hello world",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: { some: "data" },
         author: {
           userId: "U123",
@@ -1133,7 +1133,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Test",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1168,7 +1168,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Test",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1559,7 +1559,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Hello",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1596,7 +1596,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Hello",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1642,7 +1642,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Hello",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1711,7 +1711,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Hello",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1748,7 +1748,7 @@ describe("Serialization", () => {
         id: "msg-1",
         threadId: "slack:C123:1234.5678",
         text: "Hello",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1794,7 +1794,7 @@ describe("Serialization", () => {
         id: "msg-direct",
         threadId: "slack:C123:1234.5678",
         text: "Direct usage",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U123",
@@ -1966,7 +1966,7 @@ describe("Serialization", () => {
           id: "msg-1",
           threadId: "slack:C123:1234.5678",
           text: "Hello",
-          formatted: { type: "root", children: [] },
+          formatted: { nodes: [], frontmatter: {}, meta: {} },
           raw: {},
           author: {
             userId: "U123",

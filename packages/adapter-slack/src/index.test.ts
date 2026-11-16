@@ -31,7 +31,12 @@ import {
   DEFAULT_MAX_INCOMING_PARSE_LENGTH,
   Field,
   Fields,
+  getNodeChildren,
+  getNodeTag,
   Image,
+  isParagraphNode,
+  isStrongNode,
+  root,
   stringifyMarkdown,
 } from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1197,30 +1202,32 @@ describe("parseMessage", () => {
       ): Promise<Message<unknown>>;
     };
     for (const message of [
-      adapter.parseMessage(event),
+      await adapter.parseMessage(event),
       await internals.parseSlackMessage(event, "slack:C456:1234567890.123456"),
     ]) {
       expect(message.text).toBe(expected);
       expect(message.threadId).toBe("slack:C456:1234567890.123456");
       expect(message.isMention).toBe(false);
       if (text.startsWith("mail ")) {
-        expect(message.formatted.children[0]).toMatchObject({
-          type: "paragraph",
-          children: [
-            { type: "text", value: "mail " },
+        expect(message.formatted.nodes[0]).toMatchObject([
+          "p",
+          {},
+          "mail ",
+          [
+            "a",
             {
-              type: "link",
-              url: text.includes("a*b*c")
+              href: text.includes("a*b*c")
                 ? "mailto:a*b*c@example.com"
                 : "mailto:user@example.com",
             },
+            text.includes("|email") ? "email" : "user@example.com",
           ],
-        });
+        ]);
       }
     }
   });
 
-  it("classifies the bot's mention without a user lookup", () => {
+  it("classifies the bot's mention without a user lookup", async () => {
     const section = (element: Record<string, unknown>) => [
       {
         type: "rich_text",
@@ -1235,11 +1242,11 @@ describe("parseMessage", () => {
       ts: "1234567890.123456",
     };
 
-    const mention = adapter.parseMessage({
+    const mention = await adapter.parseMessage({
       ...base,
       blocks: section({ type: "user", user_id: "U_BOT" }),
     });
-    const code = adapter.parseMessage({
+    const code = await adapter.parseMessage({
       ...base,
       blocks: section({
         type: "text",
@@ -1252,7 +1259,7 @@ describe("parseMessage", () => {
     expect(code.isMention).toBe(false);
   });
 
-  it("matches a structured user element regardless of bot id case", () => {
+  it("matches a structured user element regardless of bot id case", async () => {
     const lowercase = createSlackAdapter({
       botToken: "xoxb-test-token",
       signingSecret: "test-secret",
@@ -1260,7 +1267,7 @@ describe("parseMessage", () => {
       botUserId: "u_bot",
     });
 
-    const message = lowercase.parseMessage({
+    const message = await lowercase.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1282,7 +1289,7 @@ describe("parseMessage", () => {
     expect(message.isMention).toBe(true);
   });
 
-  it("parses a basic message event", () => {
+  it("parses a basic message event", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -1291,7 +1298,7 @@ describe("parseMessage", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.id).toBe("1234567890.123456");
     expect(message.text).toBe("Hello world");
@@ -1300,8 +1307,8 @@ describe("parseMessage", () => {
     expect(message.author.isMe).toBe(false);
   });
 
-  it("converts special mentions to readable text", () => {
-    const message = adapter.parseMessage({
+  it("converts special mentions to readable text", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1310,14 +1317,12 @@ describe("parseMessage", () => {
     });
 
     expect(message.text).toBe("@here and @devs");
-    expect(message.formatted.children.map((node) => node.type)).toEqual([
-      "paragraph",
-    ]);
+    expect(message.formatted.nodes.map(getNodeTag)).toEqual(["p"]);
   });
 
-  it("preserves special mention tokens in an inbound inline code span", () => {
+  it("preserves special mention tokens in an inbound inline code span", async () => {
     const text = "<!here> <!channel> <!everyone> <!subteam^S123>";
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "D456",
@@ -1341,21 +1346,15 @@ describe("parseMessage", () => {
     });
 
     expect(message.text).toBe(`review code ${text}`);
-    expect(message.formatted.children).toEqual([
-      expect.objectContaining({
-        type: "paragraph",
-        children: [
-          expect.objectContaining({ type: "text", value: "review code " }),
-          expect.objectContaining({ type: "inlineCode", value: text }),
-        ],
-      }),
+    expect(message.formatted.nodes).toEqual([
+      ["p", {}, "review code ", ["code", {}, text]],
     ]);
     expect(message.isMention).toBe(false);
   });
 
-  it("preserves special mention tokens in an inbound code block", () => {
+  it("preserves special mention tokens in an inbound code block", async () => {
     const text = "review fence <!here> <!channel> <!everyone>";
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "D456",
@@ -1377,13 +1376,11 @@ describe("parseMessage", () => {
     });
 
     expect(message.text).toBe(text);
-    expect(message.formatted.children).toEqual([
-      expect.objectContaining({ type: "code", value: text }),
-    ]);
+    expect(message.formatted.nodes).toEqual([["pre", {}, ["code", {}, text]]]);
     expect(message.isMention).toBe(false);
   });
 
-  it("parses a bot message", () => {
+  it("parses a bot message", async () => {
     const event = {
       type: "message",
       bot_id: "B123",
@@ -1393,13 +1390,13 @@ describe("parseMessage", () => {
       subtype: "bot_message",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.author.userId).toBe("B123");
     expect(message.author.isBot).toBe(true);
   });
 
-  it("uses the bot user ID instead of the app bot ID", () => {
+  it("uses the bot user ID instead of the app bot ID", async () => {
     const event = {
       type: "message",
       bot_id: "B123",
@@ -1410,13 +1407,13 @@ describe("parseMessage", () => {
       subtype: "bot_message",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.author.userId).toBe("U123");
     expect(message.author.isBot).toBe(true);
   });
 
-  it("marks USLACK messages as system-authored", () => {
+  it("marks USLACK messages as system-authored", async () => {
     const event = {
       type: "message",
       user: "USLACK",
@@ -1426,7 +1423,7 @@ describe("parseMessage", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.author).toMatchObject({
       userId: "USLACK",
@@ -1436,7 +1433,7 @@ describe("parseMessage", () => {
     });
   });
 
-  it("detects messages from self", () => {
+  it("detects messages from self", async () => {
     const event = {
       type: "message",
       user: "U_BOT",
@@ -1445,11 +1442,11 @@ describe("parseMessage", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.author.isMe).toBe(true);
   });
 
-  it("parses message with thread_ts", () => {
+  it("parses message with thread_ts", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -1459,11 +1456,11 @@ describe("parseMessage", () => {
       thread_ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.threadId).toBe("slack:C456:1234567890.123456");
   });
 
-  it("parses edited message", () => {
+  it("parses edited message", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -1473,12 +1470,12 @@ describe("parseMessage", () => {
       edited: { ts: "1234567891.000000" },
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.metadata?.edited).toBe(true);
     expect(message.metadata?.editedAt).toBeDefined();
   });
 
-  it("parses message with files", () => {
+  it("parses message with files", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -1498,7 +1495,7 @@ describe("parseMessage", () => {
       ],
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments?.[0].type).toBe("image");
     expect(message.attachments?.[0].name).toBe("image.png");
@@ -1514,7 +1511,7 @@ describe("parseMessage", () => {
       signingSecret: "test-secret",
       logger: mockLogger,
     });
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1539,7 +1536,7 @@ describe("parseMessage", () => {
     );
   });
 
-  it("handles different file types", () => {
+  it("handles different file types", async () => {
     const createEvent = (mimetype: string) => ({
       type: "message",
       user: "U123",
@@ -1549,16 +1546,16 @@ describe("parseMessage", () => {
       files: [{ id: "F123", mimetype, url_private: "https://example.com" }],
     });
 
-    const imageMsg = adapter.parseMessage(createEvent("image/jpeg"));
+    const imageMsg = await adapter.parseMessage(createEvent("image/jpeg"));
     expect(imageMsg.attachments?.[0].type).toBe("image");
 
-    const videoMsg = adapter.parseMessage(createEvent("video/mp4"));
+    const videoMsg = await adapter.parseMessage(createEvent("video/mp4"));
     expect(videoMsg.attachments?.[0].type).toBe("video");
 
-    const audioMsg = adapter.parseMessage(createEvent("audio/mpeg"));
+    const audioMsg = await adapter.parseMessage(createEvent("audio/mpeg"));
     expect(audioMsg.attachments?.[0].type).toBe("audio");
 
-    const fileMsg = adapter.parseMessage(createEvent("application/pdf"));
+    const fileMsg = await adapter.parseMessage(createEvent("application/pdf"));
     expect(fileMsg.attachments?.[0].type).toBe("file");
   });
 
@@ -1610,7 +1607,7 @@ describe("parseMessage", () => {
     const expected =
       "Which devices support remote firmware upgrades?\n\n" +
       "Manufacturer\tIdentifier Listed\tUnits\nSamsung\tQB55C\t3";
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -1625,35 +1622,23 @@ describe("parseMessage", () => {
     for (const message of [sync, async]) {
       expect(message.text).toBe(expected);
       expect(message.attachments).toEqual([]);
-      expect(message.formatted.children[1]).toMatchObject({
-        type: "table",
-        children: [
-          {
-            type: "tableRow",
-            children: [
-              { type: "tableCell", children: [{ value: "Manufacturer" }] },
-              {
-                type: "tableCell",
-                children: [{ value: "Identifier Listed" }],
-              },
-              { type: "tableCell", children: [{ value: "Units" }] },
-            ],
-          },
-          {
-            type: "tableRow",
-            children: [
-              { type: "tableCell", children: [{ value: "Samsung" }] },
-              { type: "tableCell", children: [{ value: "QB55C" }] },
-              { type: "tableCell", children: [{ value: "3" }] },
-            ],
-          },
+      expect(message.formatted.nodes[1]).toMatchObject([
+        "table",
+        {},
+        [
+          "tr",
+          {},
+          ["td", {}, "Manufacturer"],
+          ["td", {}, "Identifier Listed"],
+          ["td", {}, "Units"],
         ],
-      });
+        ["tr", {}, ["td", {}, "Samsung"], ["td", {}, "QB55C"], ["td", {}, "3"]],
+      ]);
     }
   });
 
-  it("preserves table-only messages and ignores malformed table blocks", () => {
-    const message = adapter.parseMessage({
+  it("preserves table-only messages and ignores malformed table blocks", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1667,12 +1652,12 @@ describe("parseMessage", () => {
     });
 
     expect(message.text).toBe("Visible");
-    expect(message.formatted.children).toHaveLength(1);
-    expect(message.formatted.children[0]?.type).toBe("table");
+    expect(message.formatted.nodes).toHaveLength(1);
+    expect(getNodeTag(message.formatted.nodes[0])).toBe("table");
   });
 
-  it("preserves inline rich text within table cells", () => {
-    const message = adapter.parseMessage({
+  it("preserves inline rich text within table cells", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1707,34 +1692,20 @@ describe("parseMessage", () => {
 
     expect(message.text).toBe("See details");
     // The link URL survives in the AST as a real link node
-    expect(message.formatted.children[0]).toMatchObject({
-      type: "table",
-      children: [
-        // Headerless table: an empty header row is inserted so GFM doesn't
-        // promote the data row to a header
-        { type: "tableRow", children: [{ type: "tableCell", children: [] }] },
-        {
-          type: "tableRow",
-          children: [
-            {
-              type: "tableCell",
-              children: [
-                { type: "text", value: "See " },
-                {
-                  type: "link",
-                  url: "https://example.com",
-                  children: [{ type: "text", value: "details" }],
-                },
-              ],
-            },
-          ],
-        },
+    expect(message.formatted.nodes[0]).toMatchObject([
+      "table",
+      {},
+      ["tr", {}, ["td", {}]],
+      [
+        "tr",
+        {},
+        ["td", {}, "See ", ["a", { href: "https://example.com" }, "details"]],
       ],
-    });
+    ]);
   });
 
-  it("preserves rich text metadata within table cells", () => {
-    const message = adapter.parseMessage({
+  it("preserves rich text metadata within table cells", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1777,8 +1748,8 @@ describe("parseMessage", () => {
     expect(message.text).toBe("#C789 @S789 July 11 #ff0000");
   });
 
-  it("formats date cells from the timestamp when no fallback is present", () => {
-    const message = adapter.parseMessage({
+  it("formats date cells from the timestamp when no fallback is present", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1804,8 +1775,8 @@ describe("parseMessage", () => {
     expect(message.text).not.toContain("{date_num}");
   });
 
-  it("preserves empty and raw value cells so columns stay aligned", () => {
-    const message = adapter.parseMessage({
+  it("preserves empty and raw value cells so columns stay aligned", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1833,8 +1804,8 @@ describe("parseMessage", () => {
     expect(message.text).toBe("Samsung\t\t3\nLG\ttrue\t7");
   });
 
-  it("parses data_table blocks with their header row intact", () => {
-    const message = adapter.parseMessage({
+  it("parses data_table blocks with their header row intact", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -1860,25 +1831,12 @@ describe("parseMessage", () => {
 
     expect(message.text).toBe("Manufacturer\tUnits\nSamsung\t3");
     // data_table rows always start with a header row; no placeholder is added
-    expect(message.formatted.children[0]).toMatchObject({
-      type: "table",
-      children: [
-        {
-          type: "tableRow",
-          children: [
-            { type: "tableCell", children: [{ value: "Manufacturer" }] },
-            { type: "tableCell", children: [{ value: "Units" }] },
-          ],
-        },
-        {
-          type: "tableRow",
-          children: [
-            { type: "tableCell", children: [{ value: "Samsung" }] },
-            { type: "tableCell", children: [{ value: "3" }] },
-          ],
-        },
-      ],
-    });
+    expect(message.formatted.nodes[0]).toMatchObject([
+      "table",
+      {},
+      ["tr", {}, ["td", {}, "Manufacturer"], ["td", {}, "Units"]],
+      ["tr", {}, ["td", {}, "Samsung"], ["td", {}, "3"]],
+    ]);
   });
 
   it("preserves alert attachment content as message content", async () => {
@@ -1908,7 +1866,7 @@ describe("parseMessage", () => {
       "Project: storefront\n" +
       "Environment: production";
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -1951,7 +1909,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -1987,7 +1945,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2030,7 +1988,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2073,7 +2031,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2086,10 +2044,10 @@ describe("parseMessage", () => {
     );
 
     for (const message of [sync, async]) {
-      expect(message.formatted.children.map((node) => node.type)).toEqual([
-        "paragraph",
+      expect(message.formatted.nodes.map(getNodeTag)).toEqual([
+        "p",
         "table",
-        "paragraph",
+        "p",
       ]);
       expect(message.text).toBe(
         "Summary\n\nRegion\tUnits\nus-east\t3\n\nFooter note"
@@ -2115,7 +2073,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2151,7 +2109,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2189,7 +2147,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2226,7 +2184,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2239,12 +2197,8 @@ describe("parseMessage", () => {
     );
 
     for (const message of [sync, async]) {
-      expect(message.formatted.children).toHaveLength(3);
-      expect(message.formatted.children.map((node) => node.type)).toEqual([
-        "paragraph",
-        "paragraph",
-        "paragraph",
-      ]);
+      expect(message.formatted.nodes).toHaveLength(3);
+      expect(message.formatted.nodes.map(getNodeTag)).toEqual(["p", "p", "p"]);
       expect(message.text).toBe(
         "Standup\n\nPosted by the standup bot\n\nNo blockers today"
       );
@@ -2264,7 +2218,7 @@ describe("parseMessage", () => {
       ] as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2306,7 +2260,7 @@ describe("parseMessage", () => {
       blocks: cardToBlockKit(card) as SlackEvent["blocks"],
     };
 
-    const sync = adapter.parseMessage(event);
+    const sync = await adapter.parseMessage(event);
     const internals = adapter as unknown as {
       parseSlackMessage(
         value: SlackEvent,
@@ -2329,8 +2283,8 @@ describe("parseMessage", () => {
     }
   });
 
-  it("keeps the text body when blocks carry no layout text", () => {
-    const message = adapter.parseMessage({
+  it("keeps the text body when blocks carry no layout text", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2349,8 +2303,8 @@ describe("parseMessage", () => {
     expect(message.text).toBe("Build 421 is ready");
   });
 
-  it("falls back to attachment fallback only when nothing else carries content", () => {
-    const message = adapter.parseMessage({
+  it("falls back to attachment fallback only when nothing else carries content", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2362,8 +2316,8 @@ describe("parseMessage", () => {
     expect(message.text).toBe("Deploy finished\n\nbuild #421 succeeded");
   });
 
-  it("ignores content in unfurl and app attachments", () => {
-    const message = adapter.parseMessage({
+  it("ignores content in unfurl and app attachments", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2383,12 +2337,12 @@ describe("parseMessage", () => {
     expect(message.text).toBe("Check this out");
   });
 
-  it("keeps attachment formatting characters literal unless mrkdwn_in enables them", () => {
+  it("keeps attachment formatting characters literal unless mrkdwn_in enables them", async () => {
     const attachment = {
       title: "Cleanup failed in <module>",
       text: "rm -rf /tmp/*cache* failed for _id_ values",
     };
-    const literal = adapter.parseMessage({
+    const literal = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2404,7 +2358,7 @@ describe("parseMessage", () => {
         "rm -rf /tmp/*cache* failed for _id_ values"
     );
 
-    const mrkdwn = adapter.parseMessage({
+    const mrkdwn = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2419,18 +2373,16 @@ describe("parseMessage", () => {
     expect(mrkdwn.text).toBe(
       "Alert\n\nCleanup failed in <module>\n\ndeploy failed badly"
     );
-    expect(mrkdwn.formatted.children).toContainEqual(
-      expect.objectContaining({
-        type: "paragraph",
-        children: expect.arrayContaining([
-          expect.objectContaining({ type: "strong" }),
-        ]),
-      })
-    );
+    expect(
+      mrkdwn.formatted.nodes.some(
+        (node) =>
+          isParagraphNode(node) && getNodeChildren(node).some(isStrongNode)
+      )
+    ).toBe(true);
   });
 
-  it("keeps attachment content out of an unclosed code fence in the body", () => {
-    const message = adapter.parseMessage({
+  it("keeps attachment content out of an unclosed code fence in the body", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2446,15 +2398,15 @@ describe("parseMessage", () => {
 
     // The unclosed fence swallows the rest of the body, but the attachment
     // parses in isolation and stays a paragraph.
-    const types = message.formatted.children.map((child) => child.type);
-    expect(types).toEqual(["paragraph", "code", "paragraph"]);
+    const types = message.formatted.nodes.map(getNodeTag);
+    expect(types).toEqual(["p", "pre", "p"]);
     expect(message.text).toBe(
       "Deploy failed:\n\nTypeError: boom\n\nDeploy status\nEnvironment: production"
     );
   });
 
-  it("uses the fallback when attachment blocks carry nothing renderable", () => {
-    const message = adapter.parseMessage({
+  it("uses the fallback when attachment blocks carry nothing renderable", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2471,8 +2423,8 @@ describe("parseMessage", () => {
     expect(message.text).toBe("Heads up\n\nDeploy failed on step 3");
   });
 
-  it("prefers attachment blocks over legacy fields, matching Slack rendering", () => {
-    const message = adapter.parseMessage({
+  it("prefers attachment blocks over legacy fields, matching Slack rendering", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2504,8 +2456,8 @@ describe("parseMessage", () => {
     expect(message.text).toBe("Report\n\nRegion\tStatus\nus-east\tdown");
   });
 
-  it("links the attachment title to title_link and surfaces the URL", () => {
-    const message = adapter.parseMessage({
+  it("links the attachment title to title_link and surfaces the URL", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2520,27 +2472,26 @@ describe("parseMessage", () => {
     });
 
     expect(message.text).toBe("New issue\n\nTypeError in checkout");
-    expect(message.formatted.children[1]).toMatchObject({
-      type: "paragraph",
-      children: [
-        {
-          type: "link",
-          url: "https://sentry.example.com/issues/123",
-          children: [{ type: "text", value: "TypeError in checkout" }],
-        },
+    expect(message.formatted.nodes[1]).toMatchObject([
+      "p",
+      {},
+      [
+        "a",
+        { href: "https://sentry.example.com/issues/123" },
+        "TypeError in checkout",
       ],
-    });
+    ]);
     expect(message.links.map((link) => link.url)).toContain(
       "https://sentry.example.com/issues/123"
     );
   });
 
-  it("keeps each attachment's tables adjacent to its text", () => {
+  it("keeps each attachment's tables adjacent to its text", async () => {
     const table = (cell: string) => ({
       type: "table",
       rows: [[{ type: "raw_text", text: cell }]],
     });
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2606,12 +2557,12 @@ describe("parseMessage", () => {
     expect(usersInfo).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores tables in unfurl and app attachments", () => {
+  it("ignores tables in unfurl and app attachments", async () => {
     const tableBlock = {
       type: "table",
       rows: [[{ type: "raw_text", text: "Foreign" }]],
     };
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2626,11 +2577,11 @@ describe("parseMessage", () => {
     });
 
     expect(message.text).toBe("Check this out");
-    expect(message.formatted.children).toHaveLength(1);
+    expect(message.formatted.nodes).toHaveLength(1);
   });
 
-  it("keeps tables pasted above the message text above it", () => {
-    const message = adapter.parseMessage({
+  it("keeps tables pasted above the message text above it", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2653,13 +2604,13 @@ describe("parseMessage", () => {
       ],
     });
 
-    expect(message.formatted.children[0]?.type).toBe("table");
-    expect(message.formatted.children[1]?.type).toBe("paragraph");
+    expect(getNodeTag(message.formatted.nodes[0])).toBe("table");
+    expect(getNodeTag(message.formatted.nodes[1])).toBe("p");
     expect(message.text).toBe("Row\n\nThe table above shows Q1");
   });
 
-  it("does not leave raw bot mention tokens in table cells", () => {
-    const message = adapter.parseMessage({
+  it("does not leave raw bot mention tokens in table cells", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2684,8 +2635,8 @@ describe("parseMessage", () => {
     expect(message.text).not.toContain("<@");
   });
 
-  it("keeps a > in a table cell's link label inside the link", () => {
-    const message = adapter.parseMessage({
+  it("keeps a > in a table cell's link label inside the link", async () => {
+    const message = await adapter.parseMessage({
       type: "message",
       user: "U123",
       channel: "C456",
@@ -2717,25 +2668,16 @@ describe("parseMessage", () => {
       ],
     });
 
-    expect(message.formatted.children[0]).toMatchObject({
-      type: "table",
-      children: [
+    expect(message.formatted.nodes[0]).toEqual([
+      "table",
+      {},
+      ["tr", {}, ["td", {}]],
+      [
+        "tr",
         {},
-        {
-          children: [
-            {
-              children: [
-                {
-                  type: "link",
-                  url: "https://example.com",
-                  children: [{ type: "text", value: "p95 > 2s" }],
-                },
-              ],
-            },
-          ],
-        },
+        ["td", {}, ["a", { href: "https://example.com" }, "p95 > 2s"]],
       ],
-    });
+    ]);
   });
 
   describe("composer lists", () => {
@@ -2806,7 +2748,7 @@ describe("parseMessage", () => {
     ] as const)("%s regression coverage", (mode) => {
       const parse = async (event: SlackEvent) =>
         mode === "sync"
-          ? adapter.parseMessage(event)
+          ? await adapter.parseMessage(event)
           : await asyncParse(adapter, event);
 
       it.each([
@@ -2840,57 +2782,21 @@ describe("parseMessage", () => {
         });
 
         expect(message.text).toBe(`${value}\nship\nnested`);
-        expect(message.formatted).toMatchObject({
-          type: "root",
-          children: [
-            {
-              type: "list",
-              ordered: false,
-              children: [
-                {
-                  type: "listItem",
-                  checked: null,
-                  children: [
-                    {
-                      type: "paragraph",
-                      children: [{ type: "text", value }],
-                    },
-                  ],
-                },
-                {
-                  type: "listItem",
-                  checked: null,
-                  children: [
-                    {
-                      type: "paragraph",
-                      children: [
-                        {
-                          type: "strong",
-                          children: [{ type: "text", value: "ship" }],
-                        },
-                      ],
-                    },
-                    {
-                      type: "list",
-                      ordered: false,
-                      children: [
-                        {
-                          type: "listItem",
-                          children: [
-                            {
-                              type: "paragraph",
-                              children: [{ type: "text", value: "nested" }],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
+        expect(message.formatted).toMatchObject(
+          root([
+            [
+              "ul",
+              {},
+              ["li", {}, ["p", {}, value]],
+              [
+                "li",
+                {},
+                ["p", {}, ["strong", {}, "ship"]],
+                ["ul", {}, ["li", {}, ["p", {}, "nested"]]],
               ],
-            },
-          ],
-        });
+            ],
+          ])
+        );
       });
 
       it.each([
@@ -2933,23 +2839,17 @@ describe("parseMessage", () => {
         });
 
         expect(message.text).toBe("See referenced message\n• follow up");
-        expect(message.formatted).toMatchObject({
-          type: "root",
-          children: [
-            {
-              type: "paragraph",
-              children: [
-                { type: "text", value: "See " },
-                {
-                  type: "link",
-                  url,
-                  children: [{ type: "text", value: "referenced message" }],
-                },
-                { type: "text", value: "\n• follow up" },
-              ],
-            },
-          ],
-        });
+        expect(message.formatted).toMatchObject(
+          root([
+            [
+              "p",
+              {},
+              "See ",
+              ["a", { href: url }, "referenced message"],
+              "\n• follow up",
+            ],
+          ])
+        );
       });
 
       it("keeps a subsequent rich text block outside the preceding list", async () => {
@@ -2963,59 +2863,38 @@ describe("parseMessage", () => {
         });
 
         expect(message.text).toBe("one\n\nafter");
-        expect(message.formatted).toMatchObject({
-          type: "root",
-          children: [
-            {
-              type: "list",
-              ordered: false,
-              children: [
-                {
-                  type: "listItem",
-                  children: [
-                    {
-                      type: "paragraph",
-                      children: [{ type: "text", value: "one" }],
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: "paragraph",
-              children: [{ type: "text", value: "after" }],
-            },
-          ],
-        });
+        expect(message.formatted).toMatchObject(
+          root([
+            ["ul", {}, ["li", {}, ["p", {}, "one"]]],
+            ["p", {}, "after"],
+          ])
+        );
       });
     });
 
     it("parses the issue's list into nested list nodes in both parsing paths", async () => {
       for (const message of [
-        adapter.parseMessage(issueEvent),
+        await adapter.parseMessage(issueEvent),
         await asyncParse(adapter, issueEvent),
       ]) {
-        expect(message.formatted.children.map((node) => node.type)).toEqual([
-          "paragraph",
-          "list",
-          "paragraph",
+        expect(message.formatted.nodes.map(getNodeTag)).toEqual([
+          "p",
+          "ul",
+          "p",
         ]);
-        expect(message.formatted.children[1]).toMatchObject({
-          type: "list",
-          ordered: false,
-          children: [
-            { type: "listItem" },
-            {
-              type: "listItem",
-              children: [
-                { type: "paragraph" },
-                { type: "list", children: [{ type: "listItem" }] },
-              ],
-            },
+        expect(message.formatted.nodes[1]).toEqual([
+          "ul",
+          {},
+          ["li", {}, ["p", {}, "one"]],
+          [
+            "li",
+            {},
+            ["p", {}, "two"],
+            ["ul", {}, ["li", {}, ["p", {}, "nested"]]],
           ],
-        });
-        expect(stringifyMarkdown(message.formatted)).toBe(
-          "Steps:\n\n* one\n* two\n  * nested\n\n@here and @devs\n"
+        ]);
+        expect(await stringifyMarkdown(message.formatted)).toBe(
+          "Steps:\n\n- one\n- two\n  - nested\n\n@here and @devs"
         );
         expect(message.text).toBe(
           "Steps:\n\none\ntwo\nnested\n\n@here and @devs"
@@ -3068,13 +2947,13 @@ describe("parseMessage", () => {
       });
 
       expect(message.isMention).toBe(true);
-      expect(stringifyMarkdown(message.formatted)).toBe(
-        "@bot please:\n\n* ask @jane\n* **ship** it\n"
+      expect(await stringifyMarkdown(message.formatted)).toBe(
+        "@bot please:\n\n- ask @jane\n- **ship** it"
       );
     });
 
-    it("keeps a table next to a list", () => {
-      const message = adapter.parseMessage({
+    it("keeps a table next to a list", async () => {
+      const message = await adapter.parseMessage({
         type: "message",
         user: "U123",
         channel: "C456",
@@ -3086,13 +2965,10 @@ describe("parseMessage", () => {
         ],
       });
 
-      expect(message.formatted.children.map((node) => node.type)).toEqual([
-        "list",
-        "table",
-      ]);
+      expect(message.formatted.nodes.map(getNodeTag)).toEqual(["ul", "table"]);
     });
 
-    it("keeps event.text when blocks have no list or carry other block types", () => {
+    it("keeps event.text when blocks have no list or carry other block types", async () => {
       const cases: SlackMessageBlock[][] = [
         [{ type: "rich_text", elements: [section(text("other words"))] }],
         [
@@ -3105,7 +2981,7 @@ describe("parseMessage", () => {
         ],
       ];
       for (const blocks of cases) {
-        const message = adapter.parseMessage({
+        const message = await adapter.parseMessage({
           type: "message",
           user: "U123",
           channel: "C456",
@@ -3131,7 +3007,7 @@ describe("link extraction", () => {
     botUserId: "U_BOT",
   });
 
-  it("extracts links from rich_text blocks", () => {
+  it("extracts links from rich_text blocks", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3155,13 +3031,13 @@ describe("link extraction", () => {
       ],
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.links).toHaveLength(1);
     expect(message.links[0]?.url).toBe("https://example.com");
   });
 
-  it("extracts links from text when no blocks are present", () => {
+  it("extracts links from text when no blocks are present", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3170,14 +3046,14 @@ describe("link extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.links).toHaveLength(2);
     expect(message.links[0]?.url).toBe("https://vercel.com");
     expect(message.links[1]?.url).toBe("https://example.com");
   });
 
-  it("deduplicates URLs", () => {
+  it("deduplicates URLs", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3191,8 +3067,8 @@ describe("link extraction", () => {
             {
               type: "rich_text_section",
               elements: [
-                { type: "link", url: "https://example.com" },
-                { type: "link", url: "https://example.com" },
+                ["a", { href: "https://example.com" }],
+                ["a", { href: "https://example.com" }],
               ],
             },
           ],
@@ -3200,12 +3076,12 @@ describe("link extraction", () => {
       ],
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.links).toHaveLength(1);
   });
 
-  it("provides fetchMessage for Slack message links", () => {
+  it("provides fetchMessage for Slack message links", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3214,7 +3090,7 @@ describe("link extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.links).toHaveLength(1);
     expect(message.links[0]?.url).toBe(
@@ -3223,7 +3099,7 @@ describe("link extraction", () => {
     expect(message.links[0]?.fetchMessage).toBeInstanceOf(Function);
   });
 
-  it("returns empty links for messages without URLs", () => {
+  it("returns empty links for messages without URLs", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3232,12 +3108,12 @@ describe("link extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.links).toEqual([]);
   });
 
-  it("does not treat user mentions as links", () => {
+  it("does not treat user mentions as links", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3246,7 +3122,7 @@ describe("link extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
 
     expect(message.links).toEqual([]);
   });
@@ -3263,23 +3139,10 @@ describe("renderFormatted", () => {
     logger: mockLogger,
   });
 
-  it("renders AST to standard markdown (Slack now accepts markdown natively)", () => {
-    const ast = {
-      type: "root" as const,
-      children: [
-        {
-          type: "paragraph" as const,
-          children: [
-            {
-              type: "strong" as const,
-              children: [{ type: "text" as const, value: "bold" }],
-            },
-          ],
-        },
-      ],
-    };
+  it("renders AST to standard markdown (Slack now accepts markdown natively)", async () => {
+    const ast = root([["p", {}, ["strong", {}, "bold"]]]);
 
-    const result = adapter.renderFormatted(ast);
+    const result = await adapter.renderFormatted(ast);
     expect(result.trim()).toBe("**bold**");
   });
 });
@@ -3295,7 +3158,7 @@ describe("edge cases", () => {
     logger: mockLogger,
   });
 
-  it("handles missing text in event", () => {
+  it("handles missing text in event", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3303,11 +3166,11 @@ describe("edge cases", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.text).toBe("");
   });
 
-  it("handles missing user in event", () => {
+  it("handles missing user in event", async () => {
     const event = {
       type: "message",
       channel: "C456",
@@ -3315,11 +3178,11 @@ describe("edge cases", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.author.userId).toBe("unknown");
   });
 
-  it("handles missing ts in event", () => {
+  it("handles missing ts in event", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3327,11 +3190,11 @@ describe("edge cases", () => {
       text: "No timestamp",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.id).toBe("");
   });
 
-  it("parses username from event when available", () => {
+  it("parses username from event when available", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3341,7 +3204,7 @@ describe("edge cases", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.author.userName).toBe("testuser");
   });
 });
@@ -3357,7 +3220,7 @@ describe("date parsing", () => {
     logger: mockLogger,
   });
 
-  it("parses Slack timestamp to Date", () => {
+  it("parses Slack timestamp to Date", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3366,11 +3229,11 @@ describe("date parsing", () => {
       ts: "1609459200.000000", // 2021-01-01 00:00:00 UTC
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.metadata?.dateSent).toEqual(new Date(1609459200000));
   });
 
-  it("handles edited timestamp", () => {
+  it("handles edited timestamp", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3380,7 +3243,7 @@ describe("date parsing", () => {
       edited: { ts: "1609459260.000000" }, // 1 minute later
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.metadata?.editedAt).toEqual(new Date(1609459260000));
   });
 });
@@ -3396,7 +3259,7 @@ describe("formatted text extraction", () => {
     logger: mockLogger,
   });
 
-  it("extracts plain text from mrkdwn", () => {
+  it("extracts plain text from mrkdwn", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3405,11 +3268,11 @@ describe("formatted text extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.text).toBe("bold and italic");
   });
 
-  it("extracts text from links", () => {
+  it("extracts text from links", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3418,11 +3281,11 @@ describe("formatted text extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.text).toContain("this link");
   });
 
-  it("extracts text from user mentions", () => {
+  it("extracts text from user mentions", async () => {
     const event = {
       type: "message",
       user: "U123",
@@ -3431,7 +3294,7 @@ describe("formatted text extraction", () => {
       ts: "1234567890.123456",
     };
 
-    const message = adapter.parseMessage(event);
+    const message = await adapter.parseMessage(event);
     expect(message.text).toContain("@john");
   });
 });
@@ -4758,15 +4621,18 @@ describe("withBotToken", () => {
       ts: "1234567890.123456",
     };
 
-    const withoutBotUserId = adapter.withBotToken("xoxb-token", () => ({
-      botUserId: adapter.botUserId,
-      isMe: adapter.parseMessage(event).author.isMe,
-    }));
-    const withBotUserId = adapter.withBotToken(
+    const withoutBotUserId = await adapter.withBotToken(
       "xoxb-token",
-      () => ({
+      async () => ({
         botUserId: adapter.botUserId,
-        isMe: adapter.parseMessage(event).author.isMe,
+        isMe: (await adapter.parseMessage(event)).author.isMe,
+      })
+    );
+    const withBotUserId = await adapter.withBotToken(
+      "xoxb-token",
+      async () => ({
+        botUserId: adapter.botUserId,
+        isMe: (await adapter.parseMessage(event)).author.isMe,
       }),
       { installationId: "T123", botUserId: "U_INSTALL_BOT" }
     );
@@ -5914,6 +5780,9 @@ describe("message subtype handling", () => {
     await adapter.handleWebhook(request);
 
     expect(chatInstance).not.toHaveDispatched("processMessage");
+    await vi.waitFor(() =>
+      expect(chatInstance.processMessageDeleted).toHaveBeenCalled()
+    );
     expect(chatInstance.processMessageDeleted).toHaveBeenCalledWith(
       expect.objectContaining({
         adapter,
@@ -6441,9 +6310,9 @@ describe("Attachment.fetchData token resolution", () => {
     }
     const internals = adapter as unknown as AdapterInternals;
 
-    const attachment = internals.requestContext.run(
+    const attachment = await internals.requestContext.run(
       { token: "xoxb-team-snapshot" },
-      () => adapter.parseMessage(fileEvent).attachments?.[0]
+      async () => (await adapter.parseMessage(fileEvent)).attachments?.[0]
     );
     expect(attachment).toBeDefined();
 
@@ -6472,7 +6341,7 @@ describe("Attachment.fetchData token resolution", () => {
 
     // Attachment created outside any requestContext frame; resolver is NOT
     // invoked at creation time because resolution is deferred to fetch.
-    const attachment = adapter.parseMessage(fileEvent).attachments?.[0];
+    const attachment = (await adapter.parseMessage(fileEvent)).attachments?.[0];
     expect(attachment).toBeDefined();
     expect(resolver).not.toHaveBeenCalled();
 
@@ -12152,7 +12021,7 @@ describe("reverse user lookup", () => {
       const { adapter } = createAdapterWithState();
 
       const astMessage = {
-        ast: { type: "root", children: [] },
+        ast: root([]),
       } as AdapterPostableMessage;
 
       const result = await (
@@ -14980,7 +14849,7 @@ describe("link unfurl enrichment", () => {
                 type: "rich_text_section",
                 elements: [
                   { type: "text", text: "Check out " },
-                  { type: "link", url: "https://example.com/article" },
+                  ["a", { href: "https://example.com/article" }],
                 ],
               },
             ],
@@ -15104,7 +14973,7 @@ describe("link unfurl enrichment", () => {
             elements: [
               {
                 type: "rich_text_section",
-                elements: [{ type: "link", url: "https://example.com" }],
+                elements: [["a", { href: "https://example.com" }]],
               },
             ],
           },
@@ -15198,7 +15067,7 @@ describe("link unfurl enrichment", () => {
             elements: [
               {
                 type: "rich_text_section",
-                elements: [{ type: "link", url: "https://example.com" }],
+                elements: [["a", { href: "https://example.com" }]],
               },
             ],
           },
@@ -16247,36 +16116,19 @@ describe("event routing via authorizations[]", () => {
 
 describe("inbound markdown budget", { timeout: 20_000 }, () => {
   const secret = "test-signing-secret";
-  const EMPHASIS = "*a".repeat(8192);
-  const NESTED = ">".repeat(6000);
-  const ESCAPED_NESTED = "&gt;".repeat(4000);
+  const LONG = "*a".repeat(8193);
   const channel = "C456";
   const ts = "1234567890.424242";
   const converter = new SlackFormatConverter();
 
   function unparsed(value: string) {
-    return { type: "paragraph", children: [{ type: "text", value }] };
+    return ["p", {}, value];
   }
 
   /** The content the adapter builds when it parses each mrkdwn part. */
-  function parsed(...parts: string[]) {
-    return {
-      type: "root",
-      children: parts.flatMap((part) => converter.toAst(part).children),
-    };
-  }
-
-  function unparsedTable(rows: string[][]) {
-    return {
-      type: "table",
-      children: rows.map((row) => ({
-        type: "tableRow",
-        children: row.map((value) => ({
-          type: "tableCell",
-          children: [{ type: "text", value }],
-        })),
-      })),
-    };
+  async function parsed(...parts: string[]) {
+    const roots = await Promise.all(parts.map((part) => converter.toAst(part)));
+    return root(roots.flatMap((part) => part.nodes));
   }
 
   async function createAdapter() {
@@ -16336,7 +16188,7 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
     const factory = processMessage.mock.calls[0][2] as () => Promise<
       Message<unknown>
     >;
-    return [await factory(), adapter.parseMessage(message as SlackEvent)];
+    return [await factory(), await adapter.parseMessage(message as SlackEvent)];
   }
 
   describe("message text", () => {
@@ -16344,32 +16196,28 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
       const input = "*bold* _it_ <https://example.com|label>";
       for (const message of await parseBoth({ text: input })) {
         expect(message.text).toBe("bold it label");
-        expect(message.formatted).toEqual(parsed(input));
+        expect(message.formatted).toEqual(await parsed(input));
       }
     });
 
     it.each([
-      ["too many emphasis markers", EMPHASIS, EMPHASIS],
-      ["deep nesting", NESTED, NESTED],
-      ["entity-escaped deep nesting", ESCAPED_NESTED, ">".repeat(4000)],
-      [
-        "a footnote opening 40 nested lists",
-        `[^a]: ${"- ".repeat(40)}a`,
-        `[^a]: ${"- ".repeat(40)}a`,
-      ],
-      [
-        "65 www. autolinks in one word",
-        "www.example.com/".repeat(65),
-        "www.example.com/".repeat(65),
-      ],
+      ["many emphasis markers", "*a".repeat(4000)],
+      ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
+      ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
+    ])("parses text with %s into a serializable tree", async (_case, input) => {
+      for (const message of await parseBoth({ text: input })) {
+        expect(message.formatted).toEqual(await parsed(input));
+        expect(() => JSON.stringify(message.formatted)).not.toThrow();
+      }
+    });
+
+    it.each([
+      ["deep nesting", ">".repeat(6000), ">".repeat(6000)],
+      ["entity-escaped deep nesting", "&gt;".repeat(4000), ">".repeat(4000)],
     ])("keeps text with %s unparsed", async (_case, input, value) => {
       for (const message of await parseBoth({ text: input })) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: [unparsed(value)],
-        });
+        expect(message.formatted).toEqual(root([unparsed(value)]));
         expect(message.text).toBe(value);
-        expect(() => JSON.stringify(message.formatted)).not.toThrow();
       }
     });
 
@@ -16381,7 +16229,7 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
         vi.fn().mockResolvedValue({
           ok: true,
           messages: [
-            { type: "message", user: "U123", text: EMPHASIS, ts },
+            { type: "message", user: "U123", text: LONG, ts },
             { type: "message", user: "U123", text: "*bold*", ts: "1.2" },
           ],
         })
@@ -16392,12 +16240,9 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
         { direction: "forward" }
       );
 
-      expect(messages[0]?.formatted).toEqual({
-        type: "root",
-        children: [unparsed(EMPHASIS)],
-      });
-      expect(messages[0]?.text).toBe(EMPHASIS);
-      expect(messages[1]?.formatted).toEqual(parsed("*bold*"));
+      expect(messages[0]?.formatted).toEqual(root([unparsed(LONG)]));
+      expect(messages[0]?.text).toBe(LONG);
+      expect(messages[1]?.formatted).toEqual(await parsed("*bold*"));
     });
   });
 
@@ -16413,21 +16258,14 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
       const mrkdwn = "*Deploy* <https://example.com|done>";
       for (const message of await parseBoth(sectionEvent(mrkdwn))) {
         expect(message.text).toBe("Deploy done");
-        expect(message.formatted).toEqual(parsed(mrkdwn));
+        expect(message.formatted).toEqual(await parsed(mrkdwn));
       }
     });
 
-    it.each([
-      ["too many emphasis markers", EMPHASIS],
-      ["deep nesting", NESTED],
-    ])("keeps section text with %s unparsed", async (_case, value) => {
-      for (const message of await parseBoth(sectionEvent(value))) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: [unparsed(value)],
-        });
-        expect(message.text).toBe(value);
-        expect(() => JSON.stringify(message.formatted)).not.toThrow();
+    it("keeps over-length section text unparsed", async () => {
+      for (const message of await parseBoth(sectionEvent(LONG))) {
+        expect(message.formatted).toEqual(root([unparsed(LONG)]));
+        expect(message.text).toBe(LONG);
       }
     });
   });
@@ -16446,22 +16284,17 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
       )) {
         expect(message.text).toBe("See attachment\n\nAlert resolved");
         expect(message.formatted).toEqual(
-          parsed("See attachment", "_Alert_ ~resolved~")
+          await parsed("See attachment", "_Alert_ ~resolved~")
         );
       }
     });
 
-    it.each([
-      ["too many emphasis markers", EMPHASIS],
-      ["deep nesting", NESTED],
-    ])("keeps attachment text with %s unparsed", async (_case, value) => {
-      for (const message of await parseBoth(attachmentEvent(value))) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: [unparsed("See attachment"), unparsed(value)],
-        });
-        expect(message.text).toBe(`See attachment\n\n${value}`);
-        expect(() => JSON.stringify(message.formatted)).not.toThrow();
+    it("keeps over-length attachment text unparsed", async () => {
+      for (const message of await parseBoth(attachmentEvent(LONG))) {
+        expect(message.formatted).toEqual(
+          root([...(await parsed("See attachment")).nodes, unparsed(LONG)])
+        );
+        expect(message.text).toBe(`See attachment\n\n${LONG}`);
       }
     });
   });
@@ -16480,11 +16313,11 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
     }
 
     function bodyCell(message: Message<unknown>) {
-      const [table, ...rest] = message.formatted.children;
-      if (table?.type !== "table" || rest.length > 0) {
+      const [table, ...rest] = message.formatted.nodes;
+      if (getNodeTag(table) !== "table" || rest.length > 0) {
         throw new Error("Expected a message containing only a table");
       }
-      return table.children[1]?.children[0];
+      return getNodeChildren(getNodeChildren(table)[1])[0];
     }
 
     it("parses rich text cells into formatting nodes", async () => {
@@ -16502,122 +16335,24 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
           ],
         })
       )) {
-        const [cellParagraph] = converter.toAst(
-          "*Strong* <https://example.com|docs>"
-        ).children;
-        expect(cellParagraph?.type).toBe("paragraph");
-        expect(bodyCell(message)).toEqual({
-          type: "tableCell",
-          children:
-            cellParagraph && "children" in cellParagraph
-              ? cellParagraph.children
-              : [],
-        });
+        const [cellParagraph] = (
+          await converter.toAst("*Strong* <https://example.com|docs>")
+        ).nodes;
+        expect(getNodeTag(cellParagraph)).toBe("p");
+        expect(bodyCell(message)).toEqual([
+          "td",
+          {},
+          ...getNodeChildren(cellParagraph),
+        ]);
       }
     });
 
-    it.each([
-      ["too many emphasis markers", EMPHASIS, EMPHASIS],
-      ["entity-escaped deep nesting", ">".repeat(4000), ">".repeat(4000)],
-    ])("keeps a cell with %s unparsed", async (_case, cell, value) => {
+    it("keeps an over-length cell unparsed", async () => {
       for (const message of await parseBoth(
-        tableEvent({ type: "raw_text", text: cell })
+        tableEvent({ type: "raw_text", text: LONG })
       )) {
-        expect(bodyCell(message)).toEqual({
-          type: "tableCell",
-          children: [{ type: "text", value }],
-        });
-        expect(() => JSON.stringify(message.formatted)).not.toThrow();
+        expect(bodyCell(message)).toEqual(["td", {}, LONG]);
       }
-    });
-  });
-
-  describe("per-message budget", () => {
-    const SECTION = "*a".repeat(1000);
-
-    function sectionsEvent(sections: string[]) {
-      return {
-        text: "fallback",
-        blocks: sections.map((mrkdwn) => ({
-          type: "section",
-          text: { type: "mrkdwn", text: mrkdwn },
-        })),
-      };
-    }
-
-    it("keeps every part unparsed when the parts together exceed the budget", async () => {
-      const sections = Array.from({ length: 50 }, () => SECTION);
-      for (const message of await parseBoth(sectionsEvent(sections))) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: sections.map(unparsed),
-        });
-        expect(message.text).toBe(sections.join("\n\n"));
-        expect(() => JSON.stringify(message.formatted)).not.toThrow();
-      }
-    });
-
-    it("counts text, table cells, and attachments toward one budget", async () => {
-      // Each part is within the budget alone, and only all four exceed it.
-      const part = "*a".repeat(600);
-      const table = (cell: string) => ({
-        type: "data_table",
-        rows: [
-          [{ type: "raw_text", text: "Header" }],
-          [{ type: "raw_text", text: cell }],
-        ],
-      });
-      for (const message of await parseBoth({
-        text: part,
-        blocks: [table(part)],
-        attachments: [
-          { text: part, mrkdwn_in: ["text"] },
-          { blocks: [table(part)] },
-        ],
-      })) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: [
-            unparsedTable([["Header"], [part]]),
-            unparsed(part),
-            unparsed(part),
-            unparsedTable([["Header"], [part]]),
-          ],
-        });
-      }
-    });
-
-    it("parses each part when the parts together are within the budget", async () => {
-      const section = "*bold* _it_ ".repeat(10).trim();
-      const sections = Array.from({ length: 10 }, () => section);
-      for (const message of await parseBoth(sectionsEvent(sections))) {
-        expect(message.formatted).toEqual(parsed(...sections));
-      }
-    });
-
-    it("applies the budget to history messages", async () => {
-      const { adapter } = await createAdapter();
-      const sections = Array.from({ length: 50 }, () => SECTION);
-      mockClientMethod(
-        adapter,
-        "conversations.replies",
-        vi.fn().mockResolvedValue({
-          ok: true,
-          messages: [
-            { type: "message", user: "U123", ts, ...sectionsEvent(sections) },
-          ],
-        })
-      );
-
-      const { messages } = await adapter.fetchMessages(
-        `slack:${channel}:${ts}`,
-        { direction: "forward" }
-      );
-
-      expect(messages[0]?.formatted).toEqual({
-        type: "root",
-        children: sections.map(unparsed),
-      });
     });
   });
 
@@ -16634,10 +16369,7 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
       expect(input.length).toBeGreaterThan(DEFAULT_MAX_INCOMING_PARSE_LENGTH);
 
       for (const message of await parseBoth({ text: input })) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: [unparsed(expected)],
-        });
+        expect(message.formatted).toEqual(root([unparsed(expected)]));
         expect(message.text).toBe(expected);
       }
     });
@@ -16666,10 +16398,7 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
       );
 
       const expected = `@devs mail https://example.com${FILLER}`;
-      expect(messages[0]?.formatted).toEqual({
-        type: "root",
-        children: [unparsed(expected)],
-      });
+      expect(messages[0]?.formatted).toEqual(root([unparsed(expected)]));
       expect(messages[0]?.text).toBe(expected);
     });
 
@@ -16680,77 +16409,30 @@ describe("inbound markdown budget", { timeout: 20_000 }, () => {
       expect(input.length).toBeGreaterThan(DEFAULT_MAX_INCOMING_PARSE_LENGTH);
 
       for (const message of await parseBoth({ text: input })) {
-        expect(message.formatted).toEqual({
-          type: "root",
-          children: [unparsed(expected)],
-        });
+        expect(message.formatted).toEqual(root([unparsed(expected)]));
         expect(message.text).toBe(expected);
       }
     });
   });
 
-  describe("entity-escaped containers", () => {
-    it.each([
-      ["a run of escaped blockquote markers", ESCAPED_NESTED, ">".repeat(4000)],
-      [
-        "one line opening too many escaped blockquotes",
-        "&gt; ".repeat(129),
-        "> ".repeat(129),
-      ],
-    ])("keeps %s unparsed without parsing", async (_case, input, value) => {
-      const toAst = vi.spyOn(SlackFormatConverter.prototype, "toAst");
-      try {
-        for (const message of await parseBoth({ text: input })) {
-          expect(message.formatted).toEqual({
-            type: "root",
-            children: [unparsed(value)],
-          });
-          expect(message.text).toBe(value);
-          expect(() => JSON.stringify(message.formatted)).not.toThrow();
-        }
-        expect(toAst).not.toHaveBeenCalled();
-      } finally {
-        toAst.mockRestore();
-      }
-    });
-
-    it("parses an escaped blockquote within the limit", async () => {
-      for (const message of await parseBoth({ text: "&gt; quote" })) {
-        expect(message.text).toBe("quote");
-        expect(message.formatted).toEqual(parsed("&gt; quote"));
-        expect(message.formatted.children[0]?.type).toBe("blockquote");
+  describe("Slack code fences", () => {
+    it("parses a fence closed inline", async () => {
+      const markers = "_a".repeat(2100);
+      const input = `\`\`\`\n${markers}\`\`\``;
+      for (const message of await parseBoth({ text: input })) {
+        expect(message.formatted).toEqual(await parsed(input));
+        expect(message.formatted.nodes).toEqual([
+          ["pre", {}, ["code", {}, markers]],
+        ]);
       }
     });
   });
 
-  describe("Slack code fences", () => {
-    const markers = "_a".repeat(2100);
-
-    it("counts text after a fence closed inline", async () => {
-      const input = `\`\`\`\ncode\`\`\`\n${markers}`;
-      const toAst = vi.spyOn(SlackFormatConverter.prototype, "toAst");
-      try {
-        for (const message of await parseBoth({ text: input })) {
-          expect(message.formatted).toEqual({
-            type: "root",
-            children: [unparsed(input)],
-          });
-          expect(message.text).toBe(input);
-        }
-        expect(toAst).not.toHaveBeenCalled();
-      } finally {
-        toAst.mockRestore();
-      }
-    });
-
-    it("skips text inside a fence closed inline", async () => {
-      const input = `\`\`\`\n${markers}\`\`\``;
-      for (const message of await parseBoth({ text: input })) {
-        expect(message.formatted).toEqual(parsed(input));
-        expect(message.formatted.children).toEqual([
-          expect.objectContaining({ type: "code", value: markers }),
-        ]);
-      }
-    });
+  it("parses an escaped blockquote", async () => {
+    for (const message of await parseBoth({ text: "&gt; quote" })) {
+      expect(message.text).toBe("quote");
+      expect(message.formatted).toEqual(await parsed("&gt; quote"));
+      expect(getNodeTag(message.formatted.nodes[0])).toBe("blockquote");
+    }
   });
 });

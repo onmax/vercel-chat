@@ -1347,7 +1347,7 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
 
   // ── Message parsing ───────────────────────────────────────────────
 
-  parseMessage(raw: XchatRawMessage): Message<XchatRawMessage> {
+  async parseMessage(raw: XchatRawMessage): Promise<Message<XchatRawMessage>> {
     const { event, decrypted } = raw;
 
     // An edit replaces its target: the backend stops serving the superseded
@@ -1410,7 +1410,7 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
       id: messageId ?? event.id,
       threadId,
       text,
-      formatted: this.formatConverter.parseIncoming(text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(text)).formatted,
       raw,
       author: {
         userId: senderId,
@@ -1511,7 +1511,7 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
     // becomes the preview card.
     const card = cardOf(message);
     const rendered = card ? cardToXChat(card) : null;
-    const text = rendered ? rendered.text : this.renderFormatted(message);
+    const text = rendered ? rendered.text : await this.renderFormatted(message);
     const crypto = this.getCryptoEngine();
 
     this.stopTyping(conversationId);
@@ -1822,7 +1822,7 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
       }
     }
 
-    const text = this.renderFormatted(message);
+    const text = await this.renderFormatted(message);
     const payload = crypto.encryptEdit({
       senderId: this.userId,
       conversationId,
@@ -2108,7 +2108,7 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
         },
         decrypted: event as XchatDecryptedEvent,
       };
-      messages.push(this.parseMessage(rawMessage));
+      messages.push(await this.parseMessage(rawMessage));
     }
 
     // Sort chronologically (oldest first)
@@ -2131,12 +2131,14 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
 
   // ── Format rendering ──────────────────────────────────────────────
 
-  renderFormatted(content: FormattedContent | AdapterPostableMessage): string {
+  async renderFormatted(
+    content: FormattedContent | AdapterPostableMessage
+  ): Promise<string> {
     if (typeof content === "string") {
       return content;
     }
-    if ("type" in content && content.type === "root") {
-      return this.formatConverter.fromAst(content as FormattedContent);
+    if ("nodes" in content) {
+      return this.formatConverter.fromAst(content);
     }
     return this.formatConverter.renderPostable(
       content as AdapterPostableMessage
@@ -2806,7 +2808,7 @@ export class XchatAdapter implements Adapter<XchatThreadId, XchatRawMessage> {
 
       const dm = result.messages.find((m) => m.event?.type === "message");
       if (dm?.event) {
-        return this.parseMessage({
+        return await this.parseMessage({
           event,
           decrypted: dm.event as unknown as XchatDecryptedEvent,
         });

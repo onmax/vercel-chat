@@ -160,7 +160,7 @@ export class TwilioAdapter
         recipient: payload.from,
         sender: this.inboundThreadSender(payload),
       });
-      const message = this.parseTwilioTextPayload(payload, threadId);
+      const message = await this.parseTwilioTextPayload(payload, threadId);
       this.chat.processMessage(this, threadId, message, options);
       return twimlResponse();
     }
@@ -248,7 +248,7 @@ export class TwilioAdapter
       }
     }
 
-    const body = this.renderPostableText(message);
+    const body = await this.renderPostableText(message);
     const mediaUrl = this.mediaUrls(message);
     if (!body && mediaUrl.length === 0) {
       throw new ValidationError("twilio", "Message text cannot be empty");
@@ -417,7 +417,9 @@ export class TwilioAdapter
     await this.sendTypingIndicator(threadId, { channel: "RCS", from, to });
   }
 
-  parseMessage(raw: TwilioRawMessage): Message<TwilioRawMessage> {
+  async parseMessage(
+    raw: TwilioRawMessage
+  ): Promise<Message<TwilioRawMessage>> {
     if (isTwilioWebhookPayload(raw)) {
       if (raw.kind === "action") {
         throw new ValidationError(
@@ -449,7 +451,7 @@ export class TwilioAdapter
         ...this.apiOptions(),
         messageSid: messageId,
       });
-      return this.parseTwilioResource(raw, thread);
+      return await this.parseTwilioResource(raw, thread);
     } catch {
       return null;
     }
@@ -475,8 +477,13 @@ export class TwilioAdapter
         to: thread.sender,
       }),
     ]);
-    const messages = [...outbound, ...inbound]
-      .map((raw) => this.parseTwilioResource(raw, thread))
+    const messages = (
+      await Promise.all(
+        [...outbound, ...inbound].map((raw) =>
+          this.parseTwilioResource(raw, thread)
+        )
+      )
+    )
       .sort(
         (left, right) =>
           left.metadata.dateSent.getTime() - right.metadata.dateSent.getTime()
@@ -528,7 +535,7 @@ export class TwilioAdapter
     return decodeTwilioThreadId(threadId);
   }
 
-  renderFormatted(content: FormattedContent): string {
+  renderFormatted(content: FormattedContent): Promise<string> {
     return this.formatConverter.fromAst(content);
   }
 
@@ -546,10 +553,10 @@ export class TwilioAdapter
     });
   }
 
-  protected parseTwilioTextPayload(
+  protected async parseTwilioTextPayload(
     raw: TwilioWebhookPayload & { kind: "text" },
     threadId: string
-  ): Message<TwilioRawMessage> {
+  ): Promise<Message<TwilioRawMessage>> {
     const attachments = raw.media.map((media) => this.twilioAttachment(media));
 
     if (raw.latitude && raw.longitude) {
@@ -573,7 +580,7 @@ export class TwilioAdapter
     return new Message({
       attachments,
       author: this.author(raw.from, false),
-      formatted: this.formatConverter.parseIncoming(raw.body).formatted,
+      formatted: (await this.formatConverter.parseIncoming(raw.body)).formatted,
       id: raw.messageSid ?? `twilio:${Date.now()}`,
       metadata: {
         dateSent: new Date(),
@@ -585,31 +592,16 @@ export class TwilioAdapter
     });
   }
 
-  protected parseTwilioResource(
+  protected async parseTwilioResource(
     raw: TwilioMessageResource,
     fallbackThread: TwilioThreadId | undefined
-  ): Message<TwilioRawMessage> {
-    const isMe = raw.direction?.startsWith("outbound") ?? false;
-    const from =
-      raw.from ??
-      raw.messaging_service_sid ??
-      (isMe ? fallbackThread?.sender : fallbackThread?.recipient);
-    const to =
-      raw.to ?? (isMe ? fallbackThread?.recipient : fallbackThread?.sender);
-    if (!(from && to)) {
-      throw new ValidationError("twilio", "Twilio message is missing routing");
-    }
+  ): Promise<Message<TwilioRawMessage>> {
+    const { from, isMe, thread } = this.resourceRouting(raw, fallbackThread);
     const text = raw.body ?? "";
-    const thread = isMe
-      ? {
-          recipient: fallbackThread?.recipient ?? to,
-          sender: fallbackThread?.sender ?? from,
-        }
-      : { recipient: from, sender: to };
     return new Message({
       attachments: [],
       author: this.author(isMe ? thread.sender : from, isMe),
-      formatted: this.formatConverter.parseIncoming(text).formatted,
+      formatted: (await this.formatConverter.parseIncoming(text)).formatted,
       id: raw.sid,
       metadata: {
         dateSent: dateFromTwilio(raw.date_sent ?? raw.date_created),
@@ -621,13 +613,38 @@ export class TwilioAdapter
     });
   }
 
-  protected renderPostableText(message: AdapterPostableMessage): string {
+  protected resourceRouting(
+    raw: TwilioMessageResource,
+    fallbackThread: TwilioThreadId | undefined
+  ): { from: string; isMe: boolean; thread: TwilioThreadId } {
+    const isMe = raw.direction?.startsWith("outbound") ?? false;
+    const from =
+      raw.from ??
+      raw.messaging_service_sid ??
+      (isMe ? fallbackThread?.sender : fallbackThread?.recipient);
+    const to =
+      raw.to ?? (isMe ? fallbackThread?.recipient : fallbackThread?.sender);
+    if (!(from && to)) {
+      throw new ValidationError("twilio", "Twilio message is missing routing");
+    }
+    const thread = isMe
+      ? {
+          recipient: fallbackThread?.recipient ?? to,
+          sender: fallbackThread?.sender ?? from,
+        }
+      : { recipient: from, sender: to };
+    return { from, isMe, thread };
+  }
+
+  protected async renderPostableText(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     const card = extractCard(message);
     // An actions-only card has no text content of its own; posting it must
     // still produce a non-empty SMS body rather than a validation error.
     const text = card
       ? cardToTwilioText(card) || TWILIO_EMPTY_CARD_FALLBACK
-      : this.formatConverter.renderPostable(message);
+      : await this.formatConverter.renderPostable(message);
     return truncateTwilioText(text, { limit: TWILIO_MESSAGE_LIMIT }).text;
   }
 
@@ -784,7 +801,7 @@ export class TwilioAdapter
     raw: TwilioMessageResource,
     fallback: TwilioThreadId
   ): string {
-    return this.parseTwilioResource(raw, fallback).threadId;
+    return this.encodeThreadId(this.resourceRouting(raw, fallback).thread);
   }
 }
 

@@ -18,7 +18,10 @@ import {
   type AdapterPostableMessage,
   BaseFormatConverter,
   type Content,
+  getCodeLanguage,
   getNodeChildren,
+  getNodeTag,
+  getNodeValue,
   isBlockquoteNode,
   isCodeNode,
   isDeleteNode,
@@ -30,13 +33,15 @@ import {
   isStrongNode,
   isTableNode,
   isTextNode,
+  type Link,
   parseMarkdown,
   type Root,
+  root,
   tableToAscii,
+  toPlainText,
 } from "chat";
 
-const SUPPRESSED_AUTOLINK_REGEX = /^<https?:\/\/[^<>\s]+>$/i;
-const SUPPRESSED_MASKED_LINK_REGEX = /\]\(<https?:\/\/[^<>\s]+>\)$/i;
+const SUPPRESSABLE_URL_REGEX = /^https?:\/\/[^<>\s]+$/i;
 
 // biome-ignore lint/style/noEnum: Link styles must use an enum.
 enum DiscordLinkStyle {
@@ -44,18 +49,30 @@ enum DiscordLinkStyle {
   SuppressedMaskedLink = "suppressed-masked-link",
 }
 
-interface DiscordLinkData {
-  discordLinkStyle?: DiscordLinkStyle;
-}
+/**
+ * Source style of links parsed from Discord markdown. Comark keeps no source
+ * positions and would write extra attributes back out as `{key="value"}`, so
+ * the style lives beside the node.
+ */
+const discordLinkStyles = new WeakMap<Link, DiscordLinkStyle>();
 
-function getDiscordLinkStyle(source: string): DiscordLinkStyle | undefined {
-  if (SUPPRESSED_AUTOLINK_REGEX.test(source)) {
+function getDiscordLinkStyle(
+  markdown: string,
+  node: Link
+): DiscordLinkStyle | undefined {
+  const { href } = node[1];
+  if (!SUPPRESSABLE_URL_REGEX.test(href)) {
+    return;
+  }
+  const masked = markdown.split(`](<${href}>)`).length - 1;
+  const bracketed = markdown.split(`<${href}>`).length - 1;
+  // `<url>` parses to a link labeled with its URL, like a bare URL does.
+  if (toPlainText(root(getNodeChildren(node))) === href && bracketed > masked) {
     return DiscordLinkStyle.SuppressedAutolink;
   }
-  if (SUPPRESSED_MASKED_LINK_REGEX.test(source)) {
+  if (masked > 0) {
     return DiscordLinkStyle.SuppressedMaskedLink;
   }
-  return undefined;
 }
 
 export class DiscordFormatConverter extends BaseFormatConverter {
@@ -70,7 +87,9 @@ export class DiscordFormatConverter extends BaseFormatConverter {
   /**
    * Override renderPostable to convert @mentions in plain strings.
    */
-  override renderPostable(message: AdapterPostableMessage): string {
+  override async renderPostable(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return this.convertMentionsToDiscord(message);
     }
@@ -78,7 +97,7 @@ export class DiscordFormatConverter extends BaseFormatConverter {
       return this.convertMentionsToDiscord(message.raw);
     }
     if ("markdown" in message) {
-      return this.fromAst(this.parseDiscordMarkdown(message.markdown));
+      return this.fromAst(await this.parseDiscordMarkdown(message.markdown));
     }
     if ("ast" in message) {
       return this.fromAst(message.ast);
@@ -98,20 +117,8 @@ export class DiscordFormatConverter extends BaseFormatConverter {
   /**
    * Parse Discord markdown into an AST.
    */
-  toAst(discordMarkdown: string): Root {
+  toAst(discordMarkdown: string): Promise<Root> {
     return this.parseDiscordMarkdown(this.toStandardMarkdown(discordMarkdown));
-  }
-
-  /**
-   * Check the budget against the markdown that `toAst` parses, after Discord
-   * mentions, emoji, and spoilers are converted. The length limit still
-   * applies to the text as delivered.
-   */
-  protected override exceedsIncomingBudget(discordMarkdown: string): boolean {
-    return (
-      discordMarkdown.length > this.maxIncomingParseLength ||
-      super.exceedsIncomingBudget(this.toStandardMarkdown(discordMarkdown))
-    );
   }
 
   /**
@@ -140,34 +147,21 @@ export class DiscordFormatConverter extends BaseFormatConverter {
   }
 
   /**
-   * mdast normalizes Discord's two angle-bracketed link forms, so retain their
-   * source style in the node's adapter-specific data before rendering.
+   * Parsing normalizes Discord's two angle-bracketed link forms, so record
+   * their source style before rendering.
    */
-  private parseDiscordMarkdown(markdown: string): Root {
-    const ast = parseMarkdown(markdown);
-    this.markDiscordLinkStyles(ast.children, markdown);
+  private async parseDiscordMarkdown(markdown: string): Promise<Root> {
+    const ast = await parseMarkdown(markdown);
+    this.markDiscordLinkStyles(ast.nodes, markdown);
     return ast;
   }
 
   private markDiscordLinkStyles(nodes: Content[], markdown: string): void {
     for (const node of nodes) {
       if (isLinkNode(node)) {
-        const start = node.position?.start.offset;
-        const end = node.position?.end.offset;
-
-        if (start !== undefined && end !== undefined) {
-          const source = markdown.slice(start, end);
-          const discordLinkStyle = getDiscordLinkStyle(source);
-
-          if (discordLinkStyle !== undefined) {
-            // Packages such as mdast-util-to-hast add fields to mdast's Data,
-            // which makes an inline literal fail the excess property check.
-            const data: DiscordLinkData & typeof node.data = {
-              ...node.data,
-              discordLinkStyle,
-            };
-            node.data = data;
-          }
+        const discordLinkStyle = getDiscordLinkStyle(markdown, node);
+        if (discordLinkStyle !== undefined) {
+          discordLinkStyles.set(node, discordLinkStyle);
         }
       }
 
@@ -185,7 +179,7 @@ export class DiscordFormatConverter extends BaseFormatConverter {
 
     if (isTextNode(node)) {
       // Convert bare @mentions to Discord format <@mention>
-      return this.convertMentionsToDiscord(node.value);
+      return this.convertMentionsToDiscord(node);
     }
 
     if (isStrongNode(node)) {
@@ -213,11 +207,11 @@ export class DiscordFormatConverter extends BaseFormatConverter {
     }
 
     if (isInlineCodeNode(node)) {
-      return `\`${node.value}\``;
+      return `\`${getNodeValue(node)}\``;
     }
 
     if (isCodeNode(node)) {
-      return `\`\`\`${node.lang || ""}\n${node.value}\n\`\`\``;
+      return `\`\`\`${getCodeLanguage(node) || ""}\n${getNodeValue(node)}\n\`\`\``;
     }
 
     if (isLinkNode(node)) {
@@ -225,23 +219,23 @@ export class DiscordFormatConverter extends BaseFormatConverter {
       const linkText = children
         .map((child) => this.nodeToDiscordMarkdown(child))
         .join("");
-      const discordLinkStyle = (node.data as DiscordLinkData | undefined)
-        ?.discordLinkStyle;
+      const { href } = node[1];
+      const discordLinkStyle = discordLinkStyles.get(node);
       if (discordLinkStyle === DiscordLinkStyle.SuppressedAutolink) {
-        return `<${node.url}>`;
+        return `<${href}>`;
       }
       if (discordLinkStyle === DiscordLinkStyle.SuppressedMaskedLink) {
-        return `[${linkText}](<${node.url}>)`;
+        return `[${linkText}](<${href}>)`;
       }
 
       // Bare URLs (label === url) must stay bare: Discord only renders masked
       // links `[text](url)` inside embeds, so `[url](url)` in a normal message
       // shows up as literal text instead of a clickable link.
-      if (linkText === node.url) {
-        return node.url;
+      if (linkText === href) {
+        return href;
       }
       // Standard markdown [text](url)
-      return `[${linkText}](${node.url})`;
+      return `[${linkText}](${href})`;
     }
 
     if (isBlockquoteNode(node)) {
@@ -256,11 +250,11 @@ export class DiscordFormatConverter extends BaseFormatConverter {
       );
     }
 
-    if (node.type === "break") {
+    if (getNodeTag(node) === "br") {
       return "\n";
     }
 
-    if (node.type === "thematicBreak") {
+    if (getNodeTag(node) === "hr") {
       return "---";
     }
 

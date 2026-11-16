@@ -378,7 +378,7 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
     message: AdapterPostableMessage
   ): Promise<RawMessage<XRawMessage>> {
     const decoded = this.decodeThreadId(threadId);
-    const text = this.renderOutbound(message);
+    const text = await this.renderOutbound(message);
     const mediaIds = await this.uploadAttachments(message, decoded.kind);
 
     if (!(text.trim() || mediaIds.length > 0)) {
@@ -402,7 +402,7 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
       );
     }
 
-    const text = this.renderOutbound(message);
+    const text = await this.renderOutbound(message);
     const mediaIds = await this.uploadAttachments(message, "post");
     if (!(text.trim() || mediaIds.length > 0)) {
       throw new ValidationError("x", "Message must have text or media");
@@ -654,7 +654,7 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
       throw new ValidationError("x", "X does not support editing DMs");
     }
 
-    const text = this.renderOutbound(message);
+    const text = await this.renderOutbound(message);
     if (!text.trim()) {
       throw new ValidationError("x", "Message text cannot be empty");
     }
@@ -942,7 +942,7 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
     return decoded.kind === "post" ? PUBLIC_CHANNEL_ID : threadId;
   }
 
-  parseMessage(raw: XRawMessage): Message<XRawMessage> {
+  async parseMessage(raw: XRawMessage): Promise<Message<XRawMessage>> {
     if (raw.kind === "dm") {
       const participant = this.otherParticipant(raw.dmEvent) ?? raw.dmEvent.id;
       const threadId = this.encodeThreadId({
@@ -967,11 +967,13 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
     return this.formatConverter.fromAst(content);
   }
 
-  protected renderOutbound(message: AdapterPostableMessage): string {
+  protected async renderOutbound(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     const card = extractCard(message);
     const text = card
       ? cardToXText(card)
-      : this.formatConverter.renderPostable(message);
+      : await this.formatConverter.renderPostable(message);
     return convertEmojiPlaceholders(text, "x");
   }
 
@@ -985,7 +987,7 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
     return new Message<XRawMessage>({
       attachments: [],
       author: this.buildAuthor(post.author_id, author, isMe),
-      formatted: this.formatConverter.toAst(post.text),
+      formatted: this.formatConverter.plainTextToAst(post.text),
       id: post.id,
       // Only post.mention.create events carry a mention decision. Posts
       // rebuilt from raw or fetched by id stay undetermined so the SDK can
@@ -1015,7 +1017,7 @@ export class XAdapter implements Adapter<XThreadId, XRawMessage> {
     return new Message<XRawMessage>({
       attachments: [],
       author: this.buildAuthor(dmEvent.sender_id, sender, isMe),
-      formatted: this.formatConverter.toAst(text),
+      formatted: this.formatConverter.plainTextToAst(text),
       id: dmEvent.id,
       metadata: {
         dateSent: dmTimestamp(dmEvent),

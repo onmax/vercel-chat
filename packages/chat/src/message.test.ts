@@ -1,6 +1,6 @@
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from "@workflow/serde";
 import { describe, expect, it, vi } from "vitest";
-import { parseMarkdown } from "./markdown";
+import { paragraph, root } from "./markdown";
 import { Message, type SerializedMessage, setMessageAdapter } from "./message";
 import type { Adapter, MessageSubject } from "./types";
 
@@ -9,7 +9,7 @@ function makeMessage(overrides?: Record<string, unknown>) {
     id: "msg-1",
     threadId: "slack:C123:1234.5678",
     text: "Hello world",
-    formatted: parseMarkdown("Hello world"),
+    formatted: root([paragraph(["Hello world"])]),
     raw: { platform: "test" },
     author: {
       userId: "U123",
@@ -192,7 +192,7 @@ describe("Message", () => {
         id: "msg-2",
         threadId: "teams:ch:th",
         text: "hi",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U1",
@@ -219,7 +219,7 @@ describe("Message", () => {
         id: "msg-3",
         threadId: "t",
         text: "t",
-        formatted: { type: "root", children: [] },
+        formatted: { nodes: [], frontmatter: {}, meta: {} },
         raw: {},
         author: {
           userId: "U",

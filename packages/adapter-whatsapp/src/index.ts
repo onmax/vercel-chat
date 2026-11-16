@@ -460,7 +460,7 @@ export class WhatsAppAdapter
               if (message.type === "system") {
                 continue;
               }
-              this.handleInboundMessage(
+              await this.handleInboundMessage(
                 message,
                 contact,
                 value.metadata.phone_number_id,
@@ -529,13 +529,13 @@ export class WhatsAppAdapter
   /**
    * Handle an inbound message from a user.
    */
-  protected handleInboundMessage(
+  protected async handleInboundMessage(
     inbound: WhatsAppInboundMessage,
     contact: WhatsAppContact | undefined,
     phoneNumberId: string,
     options?: WebhookOptions,
     identity?: WhatsAppIdentity
-  ): void {
+  ): Promise<void> {
     if (!this.chat) {
       this.logger.warn("Chat instance not initialized, ignoring message");
       return;
@@ -588,7 +588,7 @@ export class WhatsAppAdapter
       userWaId: user.userId,
     });
 
-    const message = this.buildMessage(
+    const message = await this.buildMessage(
       inbound,
       contact,
       threadId,
@@ -998,14 +998,14 @@ export class WhatsAppAdapter
   /**
    * Build a Message from a WhatsApp inbound message.
    */
-  protected buildMessage(
+  protected async buildMessage(
     inbound: WhatsAppInboundMessage,
     contact: WhatsAppContact | undefined,
     threadId: string,
     text: string,
     phoneNumberId: string | undefined,
     identity?: WhatsAppIdentity
-  ): Message<WhatsAppRawMessage> {
+  ): Promise<Message<WhatsAppRawMessage>> {
     const user = identity ?? this.fields(inbound, contact);
     if (!user) {
       throw new ValidationError("whatsapp", "Message has no user identifier");
@@ -1013,8 +1013,7 @@ export class WhatsAppAdapter
 
     const author = this.author(user, contact);
 
-    const formatted: FormattedContent =
-      this.formatConverter.parseIncoming(text).formatted;
+    const { formatted } = await this.formatConverter.parseIncoming(text);
 
     const raw: WhatsAppRawMessage = {
       message: inbound,
@@ -1290,7 +1289,7 @@ export class WhatsAppAdapter
 
     // Regular text message
     const body = convertEmojiPlaceholders(
-      this.formatConverter.renderPostable(message),
+      await this.formatConverter.renderPostable(message),
       "whatsapp"
     );
 
@@ -1342,7 +1341,7 @@ export class WhatsAppAdapter
       }
     } else {
       text = convertEmojiPlaceholders(
-        this.renderPostableText(message),
+        await this.renderPostableText(message),
         "whatsapp"
       );
     }
@@ -1926,10 +1925,11 @@ export class WhatsAppAdapter
   /**
    * Parse platform message format to normalized format.
    */
-  parseMessage(raw: WhatsAppRawMessage): Message<WhatsAppRawMessage> {
+  async parseMessage(
+    raw: WhatsAppRawMessage
+  ): Promise<Message<WhatsAppRawMessage>> {
     const text = this.extractTextContent(raw.message) || "";
-    const formatted: FormattedContent =
-      this.formatConverter.parseIncoming(text).formatted;
+    const { formatted } = await this.formatConverter.parseIncoming(text);
     const attachments = this.buildAttachments(raw.message);
     // A stored canonical userId wins; otherwise derive the identity with
     // the same precedence the webhook path uses.
@@ -2005,7 +2005,9 @@ export class WhatsAppAdapter
   /**
    * Render optional text from a postable message (empty for files-only payloads).
    */
-  protected renderPostableText(message: AdapterPostableMessage): string {
+  protected async renderPostableText(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

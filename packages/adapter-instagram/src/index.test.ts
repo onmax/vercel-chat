@@ -9,7 +9,13 @@ import {
   createMockLogger,
   threadIdContract,
 } from "@chat-adapter/tests";
-import { type ChatInstance, type Message, parseMarkdown } from "chat";
+import {
+  type ChatInstance,
+  type Message,
+  paragraph,
+  parseMarkdown,
+  root,
+} from "chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createInstagramAdapter,
@@ -105,19 +111,19 @@ function lastJsonBody(): Record<string, unknown> {
   return JSON.parse(String(init?.body)) as Record<string, unknown>;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   mockFetch.mockReset();
   vi.stubGlobal("fetch", mockFetch);
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
 describe("InstagramAdapter", () => {
   describe("factory", () => {
-    it("reads all credentials and API version from the environment", () => {
+    it("reads all credentials and API version from the environment", async () => {
       vi.stubEnv("INSTAGRAM_ACCESS_TOKEN", ACCESS_TOKEN);
       vi.stubEnv("INSTAGRAM_ACCOUNT_ID", ACCOUNT_ID);
       vi.stubEnv("INSTAGRAM_APP_SECRET", APP_SECRET);
@@ -134,7 +140,7 @@ describe("InstagramAdapter", () => {
       ["accountId", { accountId: "" }],
       ["appSecret", { appSecret: "" }],
       ["verifyToken", { verifyToken: "" }],
-    ])("requires %s", (_name, missing) => {
+    ])("requires %s", async (_name, missing) => {
       expect(() =>
         createInstagramAdapter({
           accessToken: ACCESS_TOKEN,
@@ -149,7 +155,7 @@ describe("InstagramAdapter", () => {
   });
 
   describe("thread IDs", () => {
-    it("rejects malformed and cross-platform IDs", () => {
+    it("rejects malformed and cross-platform IDs", async () => {
       const adapter = createAdapter();
       expect(() => adapter.decodeThreadId("instagram:only-two")).toThrow(
         ValidationError
@@ -550,25 +556,29 @@ describe("inbound markdown parsing", () => {
 
     expect(status).toBe(200);
     expect(message?.text).toBe(body);
-    expect(message?.formatted).toEqual(parseMarkdown(body));
+    expect(message?.formatted).toEqual(await parseMarkdown(body));
   });
 
   it.each([
     ["unmatched emphasis markers", "*a".repeat(8192)],
-    ["deeply nested blockquotes", ">".repeat(6000)],
     ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
     ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-  ])("keeps an inbound message with %s as one text node", async (_name, body) => {
+  ])("parses an inbound message with %s", async (_name, body) => {
     const { status, message } = await dispatchText(body);
 
     expect(status).toBe(200);
     expect(message?.text).toBe(body);
-    expect(message?.formatted).toStrictEqual({
-      type: "root",
-      children: [
-        { type: "paragraph", children: [{ type: "text", value: body }] },
-      ],
-    });
+    expect(message?.formatted).toEqual(await parseMarkdown(body));
+    expect(() => JSON.stringify(message?.formatted)).not.toThrow();
+  });
+
+  it("keeps an inbound message with deeply nested blockquotes as one text node", async () => {
+    const body = ">".repeat(6000);
+    const { status, message } = await dispatchText(body);
+
+    expect(status).toBe(200);
+    expect(message?.text).toBe(body);
+    expect(message?.formatted).toStrictEqual(root([paragraph([body])]));
     expect(() => JSON.stringify(message?.formatted)).not.toThrow();
   });
 });

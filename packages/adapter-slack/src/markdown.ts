@@ -16,7 +16,10 @@ import {
   BaseFormatConverter,
   type Content,
   convertEmojiPlaceholders,
+  getCodeLanguage,
   getNodeChildren,
+  getNodeTag,
+  getNodeValue,
   isBlockquoteNode,
   isCodeNode,
   isDeleteNode,
@@ -125,47 +128,15 @@ export class SlackFormatConverter extends BaseFormatConverter {
    * Render an AST to standard markdown. Slack accepts this directly via
    * `markdown_text` and the `markdown` block.
    */
-  fromAst(ast: Root): string {
+  fromAst(ast: Root): Promise<string> {
     return stringifyMarkdown(ast);
   }
 
   /**
    * Parse Slack mrkdwn into an AST. Used for incoming `message` events.
    */
-  toAst(mrkdwn: string): Root {
+  toAst(mrkdwn: string): Promise<Root> {
     return parseMarkdown(slackMrkdwnToMarkdown(mrkdwn));
-  }
-
-  /**
-   * Return a parser for the mrkdwn parts of one message, such as its text,
-   * layout block text, attachment text, and table cells. The parse budget
-   * applies to all parts together: when they exceed it, no part is parsed and
-   * each becomes a single text node. Otherwise each part goes through
-   * `parseIncoming`.
-   *
-   * @internal Used by SlackAdapter to parse inbound messages.
-   */
-  incomingPartsParser(parts: readonly string[]): (part: string) => Root {
-    if (this.exceedsIncomingBudget(parts.join("\n\n"))) {
-      return (part) =>
-        part.trim()
-          ? this.unparsedIncoming(part).formatted
-          : { type: "root", children: [] };
-    }
-    return (part) => this.parseIncoming(part).formatted;
-  }
-
-  /**
-   * Check the budget against the markdown that `toAst` parses, with entities
-   * decoded and Slack code fences, emphasis, and tokens converted, so the
-   * checks see the same blockquotes and fences as the parser. The length
-   * limit still applies to the text as delivered.
-   */
-  protected override exceedsIncomingBudget(mrkdwn: string): boolean {
-    return (
-      mrkdwn.length > this.maxIncomingParseLength ||
-      super.exceedsIncomingBudget(slackMrkdwnToMarkdown(mrkdwn))
-    );
   }
 
   protected override incomingFallbackText(mrkdwn: string): string {
@@ -184,7 +155,9 @@ export class SlackFormatConverter extends BaseFormatConverter {
    * Note: `markdown_text` has a 12,000 character limit; `text` allows ~40,000.
    * Note: `markdown_text` is mutually exclusive with `text` and `blocks`.
    */
-  toSlackPayload(message: AdapterPostableMessage): SlackTextPayload {
+  async toSlackPayload(
+    message: AdapterPostableMessage
+  ): Promise<SlackTextPayload> {
     if (typeof message === "string") {
       return { text: this.finalize(message) };
     }
@@ -195,7 +168,9 @@ export class SlackFormatConverter extends BaseFormatConverter {
       return { markdown_text: this.finalize(message.markdown) };
     }
     if ("ast" in message) {
-      return { markdown_text: this.finalize(stringifyMarkdown(message.ast)) };
+      return {
+        markdown_text: this.finalize(await stringifyMarkdown(message.ast)),
+      };
     }
     return { text: "" };
   }
@@ -206,7 +181,7 @@ export class SlackFormatConverter extends BaseFormatConverter {
    * Slack rejects `markdown_text` on response_url (`no_text`), so markdown/AST
    * messages are rendered to Slack's legacy mrkdwn format for this surface.
    */
-  toResponseUrlText(message: AdapterPostableMessage): string {
+  async toResponseUrlText(message: AdapterPostableMessage): Promise<string> {
     if (typeof message === "string") {
       return this.finalize(message);
     }
@@ -215,7 +190,7 @@ export class SlackFormatConverter extends BaseFormatConverter {
     }
     if ("markdown" in message) {
       return convertEmojiPlaceholders(
-        this.astToMrkdwn(parseMarkdown(message.markdown)),
+        this.astToMrkdwn(await parseMarkdown(message.markdown)),
         "slack"
       );
     }
@@ -243,7 +218,7 @@ export class SlackFormatConverter extends BaseFormatConverter {
     }
 
     if (isTextNode(node)) {
-      return linkBareMentionNames(node.value);
+      return linkBareMentionNames(node);
     }
 
     if (isStrongNode(node)) {
@@ -268,18 +243,18 @@ export class SlackFormatConverter extends BaseFormatConverter {
     }
 
     if (isInlineCodeNode(node)) {
-      return `\`${node.value}\``;
+      return `\`${getNodeValue(node)}\``;
     }
 
     if (isCodeNode(node)) {
-      return `\`\`\`${node.lang || ""}\n${node.value}\n\`\`\``;
+      return `\`\`\`${getCodeLanguage(node) || ""}\n${getNodeValue(node)}\n\`\`\``;
     }
 
     if (isLinkNode(node)) {
       const linkText = getNodeChildren(node)
         .map((child) => this.nodeToMrkdwn(child))
         .join("");
-      return `<${node.url}|${linkText}>`;
+      return `<${node[1].href}|${linkText}>`;
     }
 
     if (isBlockquoteNode(node)) {
@@ -292,11 +267,11 @@ export class SlackFormatConverter extends BaseFormatConverter {
       return this.renderList(node, 0, (child) => this.nodeToMrkdwn(child), "•");
     }
 
-    if (node.type === "break") {
+    if (getNodeTag(node) === "br") {
       return "\n";
     }
 
-    if (node.type === "thematicBreak") {
+    if (getNodeTag(node) === "hr") {
       return "---";
     }
 

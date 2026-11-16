@@ -1,6 +1,9 @@
-import remend from "remend";
+import { autoCloseMarkdown } from "comark";
 import { describe, expect, it } from "vitest";
 import { StreamingMarkdownRenderer } from "./streaming-markdown";
+
+const remend = (markdown: string): string =>
+  autoCloseMarkdown(markdown, { tables: false });
 
 const CODE_FENCE_SPLIT_RE = /```|~~~/;
 const TABLE_PIPE_RE = /^\|.*\|$/;

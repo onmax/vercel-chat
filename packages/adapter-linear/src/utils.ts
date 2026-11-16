@@ -5,14 +5,14 @@ import { cardToLinearMarkdown } from "./cards";
 import type { LinearFormatConverter } from "./markdown";
 import type { LinearAgentSessionThreadId, LinearThreadId } from "./types";
 
-export function renderMessageToLinearMarkdown(
+export async function renderMessageToLinearMarkdown(
   message: AdapterPostableMessage,
   formatConverter: LinearFormatConverter
-): string {
+): Promise<string> {
   const card = extractCard(message);
   const rendered = card
     ? cardToLinearMarkdown(card)
-    : formatConverter.renderPostable(message);
+    : await formatConverter.renderPostable(message);
 
   return convertEmojiPlaceholders(rendered, "linear");
 }

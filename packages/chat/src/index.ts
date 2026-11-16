@@ -258,7 +258,7 @@ export type {
   TextInputProps,
   TextProps,
 } from "./jsx-runtime";
-// Re-export mdast types for adapters
+// Re-export AST types for adapters
 export type {
   Blockquote,
   Code,
@@ -289,8 +289,12 @@ export {
   emphasis,
   // Types
   type FormatConverter,
-  // Type guards for mdast nodes
+  // Type guards and accessors for AST nodes
+  getCodeLanguage,
+  getListStart,
+  getNodeAttributes,
   getNodeChildren,
+  getNodeTag,
   getNodeValue,
   inlineCode,
   isBlockquoteNode,

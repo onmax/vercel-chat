@@ -31,7 +31,7 @@ const message = {
 };
 
 describe("Gmail optional Chat adapter", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllEnvs();
   });
 
@@ -53,7 +53,7 @@ describe("Gmail optional Chat adapter", () => {
       )
     );
     const adapter = createGmailAdapter({ ...config, fetch });
-    const source = adapter.parseMessage(await parseGmailMessage(message));
+    const source = await adapter.parseMessage(await parseGmailMessage(message));
     await expect(
       adapter.fetchMessage(source.threadId, source.id)
     ).rejects.toMatchObject({ name });
@@ -74,7 +74,7 @@ describe("Gmail optional Chat adapter", () => {
         return Promise.resolve(new Response("unavailable", { status: 503 }));
       });
     const adapter = createGmailAdapter({ ...config, fetch });
-    const source = adapter.parseMessage(await parseGmailMessage(message));
+    const source = await adapter.parseMessage(await parseGmailMessage(message));
     const result = await adapter.reply(source.threadId, source.id, "reviewed");
     expect(result.raw.text.trim()).toBe("reviewed");
     expect(result.raw.message.id).toBe("sent");
@@ -103,7 +103,7 @@ describe("Gmail optional Chat adapter", () => {
       refreshToken: "refresh",
       fetch,
     });
-    const source = adapter.parseMessage(await parseGmailMessage(message));
+    const source = await adapter.parseMessage(await parseGmailMessage(message));
     await adapter.fetchMessage(source.threadId, source.id);
     expect(fetch.mock.calls[0][0]).toBe("https://oauth2.googleapis.com/token");
     expect(fetch.mock.calls[1][1]?.headers).toMatchObject({
@@ -127,7 +127,7 @@ describe("Gmail optional Chat adapter", () => {
       refreshToken: "refresh",
       fetch,
     });
-    const source = adapter.parseMessage(await parseGmailMessage(message));
+    const source = await adapter.parseMessage(await parseGmailMessage(message));
     await expect(
       adapter.fetchMessage(source.threadId, source.id)
     ).rejects.toMatchObject({ name: "AuthenticationError" });
@@ -152,7 +152,7 @@ describe("Gmail optional Chat adapter", () => {
         return Promise.resolve(Response.json(message));
       });
     const adapter = createGmailAdapter({ ...config, fetch });
-    const source = adapter.parseMessage(await parseGmailMessage(message));
+    const source = await adapter.parseMessage(await parseGmailMessage(message));
     async function* chunks() {
       yield "reply";
     }
@@ -215,7 +215,7 @@ describe("Gmail optional Chat adapter", () => {
   it("uses mailbox-scoped Chat IDs while keeping native IDs in raw data", async () => {
     const adapter = createGmailAdapter(config);
     const source = await parseGmailMessage(message);
-    const parsed = adapter.parseMessage(source);
+    const parsed = await adapter.parseMessage(source);
     expect(parsed.id).not.toBe(message.id);
     expect(parsed.raw.message.id).toBe(message.id);
     expect(adapter.decodeThreadId(parsed.threadId)).toEqual({
@@ -226,7 +226,7 @@ describe("Gmail optional Chat adapter", () => {
       ...config,
       mailbox: "another@example.com",
     });
-    expect(another.parseMessage(source).id).not.toBe(parsed.id);
+    expect((await another.parseMessage(source)).id).not.toBe(parsed.id);
     expect(() => another.decodeThreadId(parsed.threadId)).toThrow("another");
   });
 
@@ -255,7 +255,7 @@ describe("Gmail optional Chat adapter", () => {
       .fn<typeof globalThis.fetch>()
       .mockResolvedValue(Response.json(payload));
     const adapter = createGmailAdapter({ ...config, fetch });
-    const parsed = adapter.parseMessage(await parseGmailMessage(payload));
+    const parsed = await adapter.parseMessage(await parseGmailMessage(payload));
     expect(parsed.attachments[1]).toMatchObject({
       name: "second.txt",
       mimeType: "text/plain",

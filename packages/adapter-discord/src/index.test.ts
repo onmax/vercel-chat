@@ -16,6 +16,9 @@ import {
   Button,
   Card,
   DEFAULT_MAX_INCOMING_PARSE_LENGTH,
+  getNodeChildren,
+  isParagraphNode,
+  isStrongNode,
   paragraph,
   root,
   Select,
@@ -1069,7 +1072,7 @@ describe("parseMessage", () => {
     logger: mockLogger,
   });
 
-  it("parses a basic message", () => {
+  it("parses a basic message", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1093,7 +1096,7 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.id).toBe("message123");
     expect(message.text).toBe("Hello world");
@@ -1104,7 +1107,7 @@ describe("parseMessage", () => {
     expect(message.threadId).toBe("discord:guild789:channel456");
   });
 
-  it("parses a bot message", () => {
+  it("parses a bot message", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1127,13 +1130,13 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.author.userId).toBe("bot123");
     expect(message.author.isBot).toBe(true);
   });
 
-  it("parses a DM message (no guild_id)", () => {
+  it("parses a DM message (no guild_id)", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "dm456",
@@ -1155,12 +1158,12 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.threadId).toBe("discord:@me:dm456");
   });
 
-  it("parses edited message", () => {
+  it("parses edited message", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1183,7 +1186,7 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.metadata?.edited).toBe(true);
     expect(message.metadata?.editedAt).toEqual(
@@ -1191,7 +1194,7 @@ describe("parseMessage", () => {
     );
   });
 
-  it("uses referenced_message content for thread starter messages", () => {
+  it("uses referenced_message content for thread starter messages", async () => {
     const rawMessage = {
       id: "starter123",
       channel_id: "thread456",
@@ -1242,7 +1245,7 @@ describe("parseMessage", () => {
       },
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.id).toBe("parent123");
     expect(message.text).toBe("Parent message content");
@@ -1250,7 +1253,7 @@ describe("parseMessage", () => {
     expect(message.threadId).toBe("discord:guild789:thread456");
   });
 
-  it("falls back gracefully when thread starter has no referenced_message", () => {
+  it("falls back gracefully when thread starter has no referenced_message", async () => {
     const rawMessage = {
       id: "starter123",
       channel_id: "thread456",
@@ -1280,14 +1283,14 @@ describe("parseMessage", () => {
       referenced_message: null,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.id).toBe("starter123");
     expect(message.text).toBe("");
     expect(message.author.userId).toBe("system");
   });
 
-  it("parses message with attachments", () => {
+  it("parses message with attachments", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1321,7 +1324,7 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments?.[0].type).toBe("image");
@@ -1332,7 +1335,7 @@ describe("parseMessage", () => {
     expect(message.attachments?.[0].fetchData).toEqual(expect.any(Function));
   });
 
-  it("handles a message without attachments", () => {
+  it("handles a message without attachments", async () => {
     const raw = {
       id: "message123",
       channel_id: "channel456",
@@ -1352,13 +1355,13 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
 
     expect(message.text).toBe("Message without attachments");
     expect(message.attachments).toEqual([]);
   });
 
-  it("parses outer and snapshot content and attachments", () => {
+  it("parses outer and snapshot content and attachments", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1422,7 +1425,7 @@ describe("parseMessage", () => {
       ],
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
 
     expect(message.text).toBe("Outer context\n\nForwarded voice note");
     expect(message.attachments?.map(({ name }) => name)).toEqual([
@@ -1431,7 +1434,7 @@ describe("parseMessage", () => {
     ]);
   });
 
-  it("handles different attachment types", () => {
+  it("handles different attachment types", async () => {
     const createMessage = (contentType: string) => ({
       id: "message123",
       channel_id: "channel456",
@@ -1462,20 +1465,22 @@ describe("parseMessage", () => {
       type: 0,
     });
 
-    const imageMsg = adapter.parseMessage(createMessage("image/jpeg"));
+    const imageMsg = await adapter.parseMessage(createMessage("image/jpeg"));
     expect(imageMsg.attachments?.[0].type).toBe("image");
 
-    const videoMsg = adapter.parseMessage(createMessage("video/mp4"));
+    const videoMsg = await adapter.parseMessage(createMessage("video/mp4"));
     expect(videoMsg.attachments?.[0].type).toBe("video");
 
-    const audioMsg = adapter.parseMessage(createMessage("audio/mpeg"));
+    const audioMsg = await adapter.parseMessage(createMessage("audio/mpeg"));
     expect(audioMsg.attachments?.[0].type).toBe("audio");
 
-    const fileMsg = adapter.parseMessage(createMessage("application/pdf"));
+    const fileMsg = await adapter.parseMessage(
+      createMessage("application/pdf")
+    );
     expect(fileMsg.attachments?.[0].type).toBe("file");
   });
 
-  it("uses username as fullName when global_name is missing", () => {
+  it("uses username as fullName when global_name is missing", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1497,7 +1502,7 @@ describe("parseMessage", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.author.fullName).toBe("testuser");
   });
 });
@@ -1515,35 +1520,14 @@ describe("renderFormatted", () => {
   });
 
   it("renders AST to Discord markdown format", () => {
-    const ast = {
-      type: "root" as const,
-      children: [
-        {
-          type: "paragraph" as const,
-          children: [
-            {
-              type: "strong" as const,
-              children: [{ type: "text" as const, value: "bold" }],
-            },
-          ],
-        },
-      ],
-    };
+    const ast = root([["p", {}, ["strong", {}, "bold"]]]);
 
     const result = adapter.renderFormatted(ast);
     expect(result).toBe("**bold**");
   });
 
   it("converts mentions in rendered output", () => {
-    const ast = {
-      type: "root" as const,
-      children: [
-        {
-          type: "paragraph" as const,
-          children: [{ type: "text" as const, value: "Hello @someone" }],
-        },
-      ],
-    };
+    const ast = root([["p", {}, "Hello @someone"]]);
 
     const result = adapter.renderFormatted(ast);
     expect(result).toContain("<@someone>");
@@ -1613,7 +1597,7 @@ describe("edge cases", () => {
     logger: mockLogger,
   });
 
-  it("handles empty content in message", () => {
+  it("handles empty content in message", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1635,11 +1619,11 @@ describe("edge cases", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.text).toBe("");
   });
 
-  it("handles null width/height in attachments", () => {
+  it("handles null width/height in attachments", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1672,12 +1656,12 @@ describe("edge cases", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.attachments?.[0].width).toBeUndefined();
     expect(message.attachments?.[0].height).toBeUndefined();
   });
 
-  it("handles missing attachment content_type", () => {
+  it("handles missing attachment content_type", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1707,7 +1691,7 @@ describe("edge cases", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.attachments?.[0].type).toBe("file");
   });
 });
@@ -1724,7 +1708,7 @@ describe("date parsing", () => {
     logger: mockLogger,
   });
 
-  it("parses ISO timestamp to Date", () => {
+  it("parses ISO timestamp to Date", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1746,7 +1730,7 @@ describe("date parsing", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.metadata?.dateSent).toEqual(
       new Date("2021-01-01T12:30:00.000Z")
     );
@@ -1765,7 +1749,7 @@ describe("formatted text extraction", () => {
     logger: mockLogger,
   });
 
-  it("extracts plain text from Discord markdown", () => {
+  it("extracts plain text from Discord markdown", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1787,11 +1771,11 @@ describe("formatted text extraction", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.text).toBe("bold and italic");
   });
 
-  it("extracts text from user mentions", () => {
+  it("extracts text from user mentions", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1813,11 +1797,11 @@ describe("formatted text extraction", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.text).toContain("@456789");
   });
 
-  it("extracts text from channel mentions", () => {
+  it("extracts text from channel mentions", async () => {
     const rawMessage = {
       id: "message123",
       channel_id: "channel456",
@@ -1839,7 +1823,7 @@ describe("formatted text extraction", () => {
       type: 0,
     };
 
-    const message = adapter.parseMessage(rawMessage);
+    const message = await adapter.parseMessage(rawMessage);
     expect(message.text).toContain("#987654");
   });
 });
@@ -1884,25 +1868,19 @@ describe("inbound markdown parsing", () => {
     };
   }
 
-  it("parses markdown once into text and formatted", () => {
-    const message = adapter.parseMessage(rawMessage(MARKDOWN_BODY));
+  it("parses markdown once into text and formatted", async () => {
+    const message = await adapter.parseMessage(rawMessage(MARKDOWN_BODY));
 
     expect(message.text).toBe(MARKDOWN_PLAIN_TEXT);
-    expect(message.formatted).toMatchObject({
-      children: [
-        {
-          type: "paragraph",
-          children: expect.arrayContaining([
-            expect.objectContaining({ type: "strong" }),
-          ]),
-        },
-      ],
-    });
+    const [first] = message.formatted.nodes;
+    expect(
+      isParagraphNode(first) && getNodeChildren(first).some(isStrongNode)
+    ).toBe(true);
     expect(toAstSpy).toHaveBeenCalledOnce();
   });
 
-  it("keeps an over-limit message verbatim without parsing", () => {
-    const message = adapter.parseMessage(rawMessage(OVER_LIMIT_BODY));
+  it("keeps an over-limit message verbatim without parsing", async () => {
+    const message = await adapter.parseMessage(rawMessage(OVER_LIMIT_BODY));
 
     expect(message.text).toBe(OVER_LIMIT_BODY);
     expect(message.formatted).toEqual(
@@ -1912,12 +1890,22 @@ describe("inbound markdown parsing", () => {
   });
 
   it.each([
-    ["too many emphasis markers", "*a".repeat(8192)],
+    ["many emphasis markers", "*a".repeat(8192)],
+    ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
+  ])("parses a message with %s", async (_case, value) => {
+    const message = await adapter.parseMessage(rawMessage(value));
+
+    expect(message.formatted).toEqual(
+      await new DiscordFormatConverter().toAst(value)
+    );
+    expect(() => JSON.stringify(message.formatted)).not.toThrow();
+  });
+
+  it.each([
     ["a line opening too many blockquotes", ">".repeat(6000)],
     ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
-    ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-  ])("keeps a message with %s verbatim", (_case, value) => {
-    const message = adapter.parseMessage(rawMessage(value));
+  ])("keeps a message with %s verbatim", async (_case, value) => {
+    const message = await adapter.parseMessage(rawMessage(value));
 
     expect(message.text).toBe(value);
     expect(message.formatted).toEqual(root([paragraph([text(value)])]));
@@ -1933,48 +1921,48 @@ describe("DiscordFormatConverter", () => {
   const converter = new DiscordFormatConverter();
 
   describe("toAst", () => {
-    it("should convert user mentions to standard format", () => {
-      const text = converter.extractPlainText("Hello <@123456789>");
+    it("should convert user mentions to standard format", async () => {
+      const text = await converter.extractPlainText("Hello <@123456789>");
       expect(text).toBe("Hello @123456789");
     });
 
-    it("should convert channel mentions", () => {
-      const text = converter.extractPlainText("Check <#987654321>");
+    it("should convert channel mentions", async () => {
+      const text = await converter.extractPlainText("Check <#987654321>");
       expect(text).toBe("Check #987654321");
     });
 
-    it("should convert custom emoji", () => {
-      const text = converter.extractPlainText("Nice <:thumbsup:123>");
+    it("should convert custom emoji", async () => {
+      const text = await converter.extractPlainText("Nice <:thumbsup:123>");
       expect(text).toBe("Nice :thumbsup:");
     });
 
-    it("should handle bold text", () => {
-      const ast = converter.toAst("**bold text**");
+    it("should handle bold text", async () => {
+      const ast = await converter.toAst("**bold text**");
       expect(ast).toBeDefined();
     });
 
-    it("should handle italic text", () => {
-      const ast = converter.toAst("*italic text*");
+    it("should handle italic text", async () => {
+      const ast = await converter.toAst("*italic text*");
       expect(ast).toBeDefined();
     });
   });
 
   describe("fromAst", () => {
-    it("should convert mentions to Discord format", () => {
-      const ast = converter.toAst("Hello @someone");
+    it("should convert mentions to Discord format", async () => {
+      const ast = await converter.toAst("Hello @someone");
       const result = converter.fromAst(ast);
       expect(result).toContain("<@someone>");
     });
   });
 
   describe("renderPostable", () => {
-    it("should render a plain string", () => {
-      const result = converter.renderPostable("Hello @user");
+    it("should render a plain string", async () => {
+      const result = await converter.renderPostable("Hello @user");
       expect(result).toBe("Hello <@user>");
     });
 
-    it("should render a raw message", () => {
-      const result = converter.renderPostable({ raw: "Hello @user" });
+    it("should render a raw message", async () => {
+      const result = await converter.renderPostable({ raw: "Hello @user" });
       expect(result).toBe("Hello <@user>");
     });
   });
@@ -6464,11 +6452,10 @@ describe("getUser", () => {
 // ============================================================================
 
 describe("inbound markdown budget", () => {
+  // Text that parses deeper than the AST depth limit.
   const VERBATIM_CASES = [
-    ["too many emphasis markers", "*a".repeat(8192)],
     ["a line opening too many blockquotes", ">".repeat(6000)],
     ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
-    ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
   ] as const;
 
   class TestGatewayDiscordAdapter extends DiscordAdapter {
@@ -6538,7 +6525,7 @@ describe("inbound markdown budget", () => {
       const message = await forward(MARKDOWN_BODY);
 
       expect(message.text).toBe(MARKDOWN_BODY);
-      expect(message.formatted).toEqual(MARKDOWN_AST);
+      expect(message.formatted).toEqual(await MARKDOWN_AST);
     });
 
     it.each(
@@ -6584,7 +6571,7 @@ describe("inbound markdown budget", () => {
       const message = await receive(MARKDOWN_BODY);
 
       expect(message.text).toBe(MARKDOWN_BODY);
-      expect(message.formatted).toEqual(MARKDOWN_AST);
+      expect(message.formatted).toEqual(await MARKDOWN_AST);
     });
 
     it.each(
@@ -6636,7 +6623,7 @@ describe("inbound markdown budget", () => {
       const message = await placeholder(MARKDOWN_BODY);
 
       expect(message.text).toBe(MARKDOWN_BODY);
-      expect(message.formatted).toEqual(MARKDOWN_AST);
+      expect(message.formatted).toEqual(await MARKDOWN_AST);
     });
 
     it.each(

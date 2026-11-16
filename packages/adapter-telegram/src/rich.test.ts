@@ -78,7 +78,7 @@ describe("Telegram rich messages", () => {
     expect(richMessageToText(message)).toContain("Read the guide and continue");
   });
 
-  it("preserves displayed text for detected entities", () => {
+  it("preserves displayed text for detected entities", async () => {
     const message: TelegramRichMessage = {
       blocks: [
         {
@@ -101,12 +101,12 @@ describe("Telegram rich messages", () => {
     };
 
     expect(richMessageToText(message)).toBe("@chat_sdk #release");
-    expect(toPlainText(parseMarkdown(richMessageToMarkdown(message)))).toBe(
-      "@chat_sdk #release"
-    );
+    expect(
+      toPlainText(await parseMarkdown(richMessageToMarkdown(message)))
+    ).toBe("@chat_sdk #release");
   });
 
-  it("escapes literal rich text without changing displayed content", () => {
+  it("escapes literal rich text without changing displayed content", async () => {
     const message: TelegramRichMessage = {
       blocks: [
         {
@@ -138,36 +138,21 @@ describe("Telegram rich messages", () => {
     };
 
     const markdown = richMessageToMarkdown(message);
-    const formatted = parseMarkdown(markdown);
+    const formatted = await parseMarkdown(markdown);
 
-    expect(formatted.children[0]).toMatchObject({
-      children: expect.arrayContaining([
-        expect.objectContaining({
-          type: "inlineCode",
-          value: " a ` b ",
-        }),
-        expect.objectContaining({
-          children: expect.arrayContaining([
-            expect.objectContaining({
-              type: "text",
-              value: "label ] x",
-            }),
-          ]),
-          type: "link",
-          url: "https://example.com/a_(b)",
-        }),
-        expect.objectContaining({
-          type: "text",
-          value: "\n# literal\n- item\n~~plain~~",
-        }),
-      ]),
-      type: "paragraph",
-    });
-    expect(formatted.children[1]).toMatchObject({
-      lang: "typescript",
-      type: "code",
-      value: "const fence = ```;",
-    });
+    expect(formatted.nodes[0]).toEqual([
+      "p",
+      {},
+      ["code", {}, " a ` b "],
+      " ",
+      ["a", { href: "https://example.com/a_(b)" }, "label ] x"],
+      "\n# literal\n- item\n~~plain~~",
+    ]);
+    expect(formatted.nodes[1]).toEqual([
+      "pre",
+      { language: "typescript" },
+      ["code", { class: "language-typescript" }, "const fence = ```;"],
+    ]);
   });
 
   it("includes current Telegram video quality fields", () => {

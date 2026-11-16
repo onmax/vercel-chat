@@ -16,7 +16,10 @@ import {
   type AdapterPostableMessage,
   BaseFormatConverter,
   type Content,
+  getCodeLanguage,
   getNodeChildren,
+  getNodeTag,
+  getNodeValue,
   isBlockquoteNode,
   isCodeNode,
   isDeleteNode,
@@ -27,6 +30,7 @@ import {
   isParagraphNode,
   isStrongNode,
   isTableNode,
+  isTableRowNode,
   isTextNode,
   type MdastTable,
   parseMarkdown,
@@ -240,7 +244,9 @@ export class TeamsFormatConverter extends BaseFormatConverter {
   /**
    * Render text messages while preserving raw strings.
    */
-  override renderPostable(message: AdapterPostableMessage): string {
+  override async renderPostable(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return message;
     }
@@ -248,7 +254,7 @@ export class TeamsFormatConverter extends BaseFormatConverter {
       return message.raw;
     }
     if ("markdown" in message) {
-      return this.fromAst(parseMarkdown(message.markdown));
+      return this.fromAst(await parseMarkdown(message.markdown));
     }
     if ("ast" in message) {
       return this.fromAst(message.ast);
@@ -268,20 +274,8 @@ export class TeamsFormatConverter extends BaseFormatConverter {
    * Parse Teams message into an AST.
    * Converts Teams HTML/mentions to standard markdown format.
    */
-  toAst(teamsText: string): Root {
+  toAst(teamsText: string): Promise<Root> {
     return parseMarkdown(teamsHtmlToMarkdown(teamsText));
-  }
-
-  /**
-   * Check the budget against the markdown `toAst` passes to the parser, so
-   * decoded entities such as `&gt;` count as the blockquote markers they
-   * become. The length limit still applies to the text as delivered.
-   */
-  protected override exceedsIncomingBudget(teamsText: string): boolean {
-    return (
-      teamsText.length > this.maxIncomingParseLength ||
-      super.exceedsIncomingBudget(teamsHtmlToMarkdown(teamsText))
-    );
   }
 
   protected override incomingFallbackText(teamsText: string): string {
@@ -297,7 +291,7 @@ export class TeamsFormatConverter extends BaseFormatConverter {
     }
 
     if (isTextNode(node)) {
-      return node.value;
+      return node;
     }
 
     if (isStrongNode(node)) {
@@ -325,11 +319,11 @@ export class TeamsFormatConverter extends BaseFormatConverter {
     }
 
     if (isInlineCodeNode(node)) {
-      return `\`${node.value}\``;
+      return `\`${getNodeValue(node)}\``;
     }
 
     if (isCodeNode(node)) {
-      return `\`\`\`${node.lang || ""}\n${node.value}\n\`\`\``;
+      return `\`\`\`${getCodeLanguage(node) || ""}\n${getNodeValue(node)}\n\`\`\``;
     }
 
     if (isLinkNode(node)) {
@@ -337,7 +331,7 @@ export class TeamsFormatConverter extends BaseFormatConverter {
         .map((child) => this.nodeToTeams(child))
         .join("");
       // Standard markdown link format
-      return `[${linkText}](${node.url})`;
+      return `[${linkText}](${node[1].href})`;
     }
 
     if (isBlockquoteNode(node)) {
@@ -350,11 +344,11 @@ export class TeamsFormatConverter extends BaseFormatConverter {
       return this.renderList(node, 0, (child) => this.nodeToTeams(child));
     }
 
-    if (node.type === "break") {
+    if (getNodeTag(node) === "br") {
       return "\n";
     }
 
-    if (node.type === "thematicBreak") {
+    if (getNodeTag(node) === "hr") {
       return "---";
     }
 
@@ -366,21 +360,21 @@ export class TeamsFormatConverter extends BaseFormatConverter {
   }
 
   /**
-   * Render an mdast table node as a GFM markdown table.
+   * Render a table node as a GFM markdown table.
    * Teams renders markdown tables natively.
    */
   private tableToGfm(node: MdastTable): string {
-    const rows: string[][] = [];
-    for (const row of node.children) {
-      const cells: string[] = [];
-      for (const cell of row.children) {
-        const cellContent = getNodeChildren(cell)
-          .map((child) => this.nodeToTeams(child))
-          .join("");
-        cells.push(cellContent);
-      }
-      rows.push(cells);
-    }
+    const rows = getNodeChildren(node)
+      .flatMap((child) =>
+        isTableRowNode(child) ? [child] : getNodeChildren(child)
+      )
+      .map((row) =>
+        getNodeChildren(row).map((cell) =>
+          getNodeChildren(cell)
+            .map((child) => this.nodeToTeams(child))
+            .join("")
+        )
+      );
 
     if (rows.length === 0) {
       return "";

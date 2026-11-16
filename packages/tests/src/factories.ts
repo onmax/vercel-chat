@@ -6,8 +6,9 @@ import {
   type Logger,
   Message,
   type MessageData,
-  parseMarkdown,
+  paragraph,
   type QueueEntry,
+  root,
   type StateAdapter,
 } from "chat";
 import { vi } from "vitest";
@@ -307,8 +308,9 @@ export function createMockChatInstance(
 }
 
 /**
- * Build a `Message` for tests. `text` is parsed into the formatted AST so
- * assertions on `message.formatted` work without manual setup.
+ * Build a `Message` for tests. `formatted` holds `text` as one paragraph,
+ * unparsed, since parsing is async. Pass `formatted: await parseMarkdown(text)`
+ * in `overrides` to test formatting.
  */
 export function createTestMessage(
   id: string,
@@ -319,7 +321,7 @@ export function createTestMessage(
     id,
     threadId: "slack:C123:1234.5678",
     text,
-    formatted: parseMarkdown(text),
+    formatted: root([paragraph([text])]),
     raw: {},
     author: {
       userId: "U123",

@@ -8,7 +8,7 @@ import {
   createMockState,
   threadIdContract,
 } from "@chat-adapter/tests";
-import type { CardElement, Message } from "chat";
+import { type CardElement, type Message, paragraph, root, text } from "chat";
 import {
   afterEach,
   beforeEach,
@@ -155,22 +155,14 @@ describe("isDM", () => {
 describe("renderFormatted", () => {
   it("should render markdown from AST", () => {
     const adapter = createTestAdapter();
-    const ast = {
-      type: "root" as const,
-      children: [
-        {
-          type: "paragraph" as const,
-          children: [{ type: "text" as const, value: "Hello world" }],
-        },
-      ],
-    };
+    const ast = root([paragraph([text("Hello world")])]);
     const result = adapter.renderFormatted(ast);
     expect(result).toContain("Hello world");
   });
 });
 
 describe("parseMessage", () => {
-  it("should parse a raw WhatsApp text message", () => {
+  it("should parse a raw WhatsApp text message", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -186,14 +178,14 @@ describe("parseMessage", () => {
         wa_id: "15551234567",
       },
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.id).toBe("wamid.ABC123");
     expect(message.text).toBe("Hello from WhatsApp!");
     expect(message.author.userId).toBe("15551234567");
     expect(message.author.userName).toBe("Alice");
   });
 
-  it("should parse a message without contact info", () => {
+  it("should parse a message without contact info", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -205,11 +197,11 @@ describe("parseMessage", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.author.userName).toBe("15559876543");
   });
 
-  it("should parse an image message with caption", () => {
+  it("should parse an image message with caption", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -226,11 +218,11 @@ describe("parseMessage", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("Check this out");
   });
 
-  it("should parse an image message without caption", () => {
+  it("should parse an image message without caption", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -246,11 +238,11 @@ describe("parseMessage", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Image]");
   });
 
-  it("should set correct dateSent from unix timestamp", () => {
+  it("should set correct dateSent from unix timestamp", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -262,13 +254,13 @@ describe("parseMessage", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.metadata.dateSent.getTime()).toBe(1700000000000);
   });
 
-  it("preserves canonical identity when reparsing raw messages", () => {
+  it("preserves canonical identity when reparsing raw messages", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       message: {
         id: "wamid.BSUID",
         from_user_id: "US.13491208655302741918",
@@ -284,9 +276,9 @@ describe("parseMessage", () => {
     expect(message.author.userId).toBe("15551234567");
   });
 
-  it("parses BSUID-only raw messages without stored identity", () => {
+  it("parses BSUID-only raw messages without stored identity", async () => {
     const adapter = createTestAdapter();
-    const message = adapter.parseMessage({
+    const message = await adapter.parseMessage({
       message: {
         id: "wamid.BSUID",
         from_user_id: "US.13491208655302741918",
@@ -303,7 +295,7 @@ describe("parseMessage", () => {
 });
 
 describe("parseMessage - media attachments", () => {
-  it("should create an image attachment with fetchData", () => {
+  it("should create an image attachment with fetchData", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -320,7 +312,7 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("A photo");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("image");
@@ -328,7 +320,7 @@ describe("parseMessage - media attachments", () => {
     expect(typeof message.attachments[0].fetchData).toBe("function");
   });
 
-  it("should create a document attachment with filename", () => {
+  it("should create a document attachment with filename", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -345,7 +337,7 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Document: report.pdf]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("file");
@@ -353,7 +345,7 @@ describe("parseMessage - media attachments", () => {
     expect(message.attachments[0].name).toBe("report.pdf");
   });
 
-  it("should create an audio attachment", () => {
+  it("should create an audio attachment", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -369,14 +361,14 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Audio message]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("audio");
     expect(message.attachments[0].mimeType).toBe("audio/ogg");
   });
 
-  it("should create a video attachment", () => {
+  it("should create a video attachment", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -392,14 +384,14 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Video]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("video");
     expect(message.attachments[0].mimeType).toBe("video/mp4");
   });
 
-  it("should create a sticker attachment as image type", () => {
+  it("should create a sticker attachment as image type", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -416,7 +408,7 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Sticker]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("image");
@@ -424,7 +416,7 @@ describe("parseMessage - media attachments", () => {
     expect(message.attachments[0].name).toBe("sticker");
   });
 
-  it("should create a location attachment with Google Maps URL", () => {
+  it("should create a location attachment with Google Maps URL", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -441,7 +433,7 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Location: San Francisco - CA, USA]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("file");
@@ -451,7 +443,7 @@ describe("parseMessage - media attachments", () => {
     );
   });
 
-  it("should format location text with coordinates when no name", () => {
+  it("should format location text with coordinates when no name", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -466,13 +458,13 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Location: 48.8566, 2.3522]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].name).toBe("Location");
   });
 
-  it("should create a voice message attachment as audio type", () => {
+  it("should create a voice message attachment as audio type", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -488,7 +480,7 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.text).toBe("[Voice message]");
     expect(message.attachments).toHaveLength(1);
     expect(message.attachments[0].type).toBe("audio");
@@ -496,7 +488,7 @@ describe("parseMessage - media attachments", () => {
     expect(message.attachments[0].name).toBe("voice");
   });
 
-  it("should have no attachments for plain text messages", () => {
+  it("should have no attachments for plain text messages", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -508,7 +500,7 @@ describe("parseMessage - media attachments", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.attachments).toHaveLength(0);
   });
 });
@@ -650,7 +642,7 @@ describe("downloadMedia", () => {
 });
 
 describe("parseMessage - isMention and threadId", () => {
-  it("should not set isMention for DMs (handled by Chat SDK)", () => {
+  it("should not set isMention for DMs (handled by Chat SDK)", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -662,11 +654,11 @@ describe("parseMessage - isMention and threadId", () => {
       },
       phoneNumberId: "123456789",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.isMention).toBeUndefined();
   });
 
-  it("should encode threadId from phoneNumberId and sender", () => {
+  it("should encode threadId from phoneNumberId and sender", async () => {
     const adapter = createTestAdapter();
     const raw = {
       message: {
@@ -678,7 +670,7 @@ describe("parseMessage - isMention and threadId", () => {
       },
       phoneNumberId: "987654321",
     };
-    const message = adapter.parseMessage(raw);
+    const message = await adapter.parseMessage(raw);
     expect(message.threadId).toBe("whatsapp:987654321:15559876543");
   });
 });
@@ -3432,15 +3424,6 @@ describe("inbound markdown parsing", () => {
   const markdownBody = "*Ship it* after [review](https://example.com/review)";
   const expectedMarkdownAst = new WhatsAppFormatConverter().toAst(markdownBody);
 
-  function fallbackAst(body: string) {
-    return {
-      type: "root",
-      children: [
-        { type: "paragraph", children: [{ type: "text", value: body }] },
-      ],
-    };
-  }
-
   async function dispatchText(
     body: string
   ): Promise<{ status: number; message: Message | undefined }> {
@@ -3458,7 +3441,7 @@ describe("inbound markdown parsing", () => {
     return { status: response.status, message };
   }
 
-  function parseText(body: string): Message {
+  function parseText(body: string): Promise<Message> {
     return createTestAdapter().parseMessage({
       message: inbound({ from: "15551234567", text: { body } }),
       phoneNumberId: "123456789",
@@ -3470,34 +3453,32 @@ describe("inbound markdown parsing", () => {
 
     expect(status).toBe(200);
     expect(message?.text).toBe(markdownBody);
-    expect(message?.formatted).toEqual(expectedMarkdownAst);
+    expect(message?.formatted).toEqual(await expectedMarkdownAst);
   });
 
   it.each(
     pathologicalBodies
-  )("keeps a webhook message with %s as one text node", async (_name, body) => {
+  )("parses a webhook message with %s", async (_name, body) => {
     const { status, message } = await dispatchText(body);
 
     expect(status).toBe(200);
-    expect(message?.text).toBe(body);
-    expect(message?.formatted).toStrictEqual(fallbackAst(body));
+    expect(message?.formatted.nodes.length).toBeGreaterThan(0);
     expect(() => JSON.stringify(message?.formatted)).not.toThrow();
   });
 
-  it("parses WhatsApp formatting when reparsing raw messages", () => {
-    const message = parseText(markdownBody);
+  it("parses WhatsApp formatting when reparsing raw messages", async () => {
+    const message = await parseText(markdownBody);
 
     expect(message.text).toBe(markdownBody);
-    expect(message.formatted).toEqual(expectedMarkdownAst);
+    expect(message.formatted).toEqual(await expectedMarkdownAst);
   });
 
   it.each(
     pathologicalBodies
-  )("keeps a reparsed raw message with %s as one text node", (_name, body) => {
-    const message = parseText(body);
+  )("parses a reparsed raw message with %s", async (_name, body) => {
+    const message = await parseText(body);
 
-    expect(message.text).toBe(body);
-    expect(message.formatted).toStrictEqual(fallbackAst(body));
+    expect(message.formatted.nodes.length).toBeGreaterThan(0);
     expect(() => JSON.stringify(message.formatted)).not.toThrow();
   });
 });

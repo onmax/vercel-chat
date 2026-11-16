@@ -5,19 +5,19 @@ import { TwilioFormatConverter } from "./markdown";
 describe("TwilioFormatConverter", () => {
   const converter = new TwilioFormatConverter();
 
-  it("keeps raw strings plain", () => {
-    expect(converter.renderPostable("hello")).toBe("hello");
+  it("keeps raw strings plain", async () => {
+    expect(await converter.renderPostable("hello")).toBe("hello");
   });
 
-  it("converts markdown to Twilio text", () => {
-    expect(converter.renderPostable({ markdown: "**hello**" })).toBe(
+  it("converts markdown to Twilio text", async () => {
+    expect(await converter.renderPostable({ markdown: "**hello**" })).toBe(
       "**hello**"
     );
   });
 
-  it("renders tables as ascii blocks", () => {
-    const text = converter.fromAst(
-      parseMarkdown("| name | age |\n| --- | --- |\n| Ada | 36 |")
+  it("renders tables as ascii blocks", async () => {
+    const text = await converter.fromAst(
+      await parseMarkdown("| name | age |\n| --- | --- |\n| Ada | 36 |")
     );
 
     expect(text).toContain("name | age");

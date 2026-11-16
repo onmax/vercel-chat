@@ -2,7 +2,7 @@
  * Linear-specific format conversion using AST-based parsing.
  *
  * Linear uses standard Markdown for comments, which is very close
- * to the mdast format used by the SDK. This converter is mostly
+ * to the AST format used by the SDK. This converter is mostly
  * pass-through, similar to the GitHub adapter.
  *
  * @see https://linear.app/docs/comment-on-issues
@@ -19,24 +19,26 @@ import {
 export class LinearFormatConverter extends BaseFormatConverter {
   /**
    * Convert an AST to standard markdown.
-   * Linear uses standard markdown, so we use remark-stringify directly.
+   * Linear uses standard markdown, so we stringify the AST directly.
    */
-  fromAst(ast: Root): string {
-    return stringifyMarkdown(ast).trim();
+  async fromAst(ast: Root): Promise<string> {
+    return (await stringifyMarkdown(ast)).trim();
   }
 
   /**
    * Parse markdown into an AST.
    * Linear uses standard markdown, so we use the standard parser.
    */
-  toAst(markdown: string): Root {
+  toAst(markdown: string): Promise<Root> {
     return parseMarkdown(markdown);
   }
 
   /**
    * Render a postable message to Linear markdown string.
    */
-  override renderPostable(message: AdapterPostableMessage): string {
+  override async renderPostable(
+    message: AdapterPostableMessage
+  ): Promise<string> {
     if (typeof message === "string") {
       return message;
     }

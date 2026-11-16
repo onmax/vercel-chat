@@ -8,7 +8,7 @@ import {
 } from "./cards";
 
 describe("Instagram cards", () => {
-  it("maps Button actions to quick replies", () => {
+  it("maps Button actions to quick replies", async () => {
     const card: CardElement = {
       type: "card",
       title: "Choose",
@@ -23,7 +23,7 @@ describe("Instagram cards", () => {
         },
       ],
     };
-    const result = cardToInstagram(card);
+    const result = await cardToInstagram(card);
     expect(result.type).toBe("quick_replies");
     if (result.type === "quick_replies") {
       expect(result.quickReplies).toEqual([
@@ -42,7 +42,7 @@ describe("Instagram cards", () => {
     }
   });
 
-  it("maps link actions to a generic template", () => {
+  it("maps link actions to a generic template", async () => {
     const card: CardElement = {
       type: "card",
       title: "Your order",
@@ -61,7 +61,7 @@ describe("Instagram cards", () => {
         },
       ],
     };
-    const result = cardToInstagram(card);
+    const result = await cardToInstagram(card);
     expect(result.type).toBe("template");
     if (result.type === "template") {
       expect(result.payload).toMatchObject({
@@ -83,7 +83,7 @@ describe("Instagram cards", () => {
     }
   });
 
-  it("falls back to readable text without actions", () => {
+  it("falls back to readable text without actions", async () => {
     const card: CardElement = {
       type: "card",
       title: "Order details",
@@ -97,11 +97,11 @@ describe("Instagram cards", () => {
         },
       ],
     };
-    expect(cardToInstagramText(card)).toContain("Status: Shipped");
-    expect(cardToInstagram(card).type).toBe("text");
+    expect(await cardToInstagramText(card)).toContain("Status: Shipped");
+    expect((await cardToInstagram(card)).type).toBe("text");
   });
 
-  it("round-trips callback payloads and passes through external payloads", () => {
+  it("round-trips callback payloads and passes through external payloads", async () => {
     const encoded = encodeInstagramCallbackData("order", "123");
     expect(decodeInstagramCallbackData(encoded)).toEqual({
       actionId: "order",

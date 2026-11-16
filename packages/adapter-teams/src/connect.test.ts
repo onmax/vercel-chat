@@ -193,7 +193,7 @@ describe("lazy Teams identity", () => {
     expect(appId).not.toHaveBeenCalled();
     expect(adapter.botUserId).toBeUndefined();
     expect(() => adapter.sdk).toThrow(ValidationError);
-    expect(adapter.parseMessage(activity).author.isMe).toBe(false);
+    expect((await adapter.parseMessage(activity)).author.isMe).toBe(false);
     const chat = createMockChatInstance();
     await Promise.all([adapter.initialize(chat), adapter.initialize(chat)]);
     await adapter.initialize(chat);
@@ -202,8 +202,8 @@ describe("lazy Teams identity", () => {
     expect(adapter.sdk.id).toBe("lazy-app");
     expect(adapter.registerCount).toBe(1);
     expect(
-      adapter.parseMessage({ ...activity, from: { id: "28:LAZY-APP" } }).author
-        .isMe
+      (await adapter.parseMessage({ ...activity, from: { id: "28:LAZY-APP" } }))
+        .author.isMe
     ).toBe(true);
   });
 

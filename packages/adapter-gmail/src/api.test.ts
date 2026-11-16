@@ -31,7 +31,7 @@ function configuration(fetch: typeof globalThis.fetch): GmailApiOptions {
 }
 
 describe("Gmail API primitives", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
   });
 
@@ -150,7 +150,7 @@ describe("Gmail API primitives", () => {
     501,
     1.5,
     Number.NaN,
-  ])("rejects invalid page size %s before accessing credentials", (maxResults) => {
+  ])("rejects invalid page size %s before accessing credentials", async (maxResults) => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     const token = vi.fn();
     const options = { ...configuration(fetch), token };
@@ -182,7 +182,7 @@ describe("Gmail API primitives", () => {
     "https://attacker.example/message",
     "abc?format=full",
     "a/b",
-  ])("rejects unsafe message ID %s before resolving credentials or fetching", (id) => {
+  ])("rejects unsafe message ID %s before resolving credentials or fetching", async (id) => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     const token = vi.fn();
     expect(() =>
@@ -240,7 +240,7 @@ describe("Gmail API primitives", () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
-  it("rejects a reply continuation from a different mailbox before sending", () => {
+  it("rejects a reply continuation from a different mailbox before sending", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     expect(() =>
       sendGmailMessage(

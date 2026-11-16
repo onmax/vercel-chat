@@ -15,6 +15,7 @@ import {
   paragraph,
   parseMarkdown,
   root,
+  strong,
   text,
 } from "chat";
 import {
@@ -247,7 +248,7 @@ describe("GitHubAdapter", () => {
   });
 
   describe("constructor", () => {
-    it("should create adapter with PAT config", () => {
+    it("should create adapter with PAT config", async () => {
       const a = new GitHubAdapter({
         token: "ghp_abc",
         webhookSecret: "secret",
@@ -259,7 +260,7 @@ describe("GitHubAdapter", () => {
       expect(a.isMultiTenant).toBe(false);
     });
 
-    it("should create adapter with app + installationId config (single-tenant)", () => {
+    it("should create adapter with app + installationId config (single-tenant)", async () => {
       const a = new GitHubAdapter({
         appId: "12345",
         privateKey:
@@ -272,7 +273,7 @@ describe("GitHubAdapter", () => {
       expect(a.isMultiTenant).toBe(false);
     });
 
-    it("should create adapter in multi-tenant mode (app without installationId)", () => {
+    it("should create adapter in multi-tenant mode (app without installationId)", async () => {
       const a = new GitHubAdapter({
         appId: "12345",
         privateKey:
@@ -284,7 +285,7 @@ describe("GitHubAdapter", () => {
       expect(a.isMultiTenant).toBe(true);
     });
 
-    it("should throw when no auth method is provided", () => {
+    it("should throw when no auth method is provided", async () => {
       expect(
         () =>
           new GitHubAdapter({
@@ -295,7 +296,7 @@ describe("GitHubAdapter", () => {
       ).toThrow("Authentication is required");
     });
 
-    it("should set botUserId when provided in config", () => {
+    it("should set botUserId when provided in config", async () => {
       const a = new GitHubAdapter({
         token: "ghp_abc",
         webhookSecret: "secret",
@@ -306,13 +307,13 @@ describe("GitHubAdapter", () => {
       expect(a.botUserId).toBe("42");
     });
 
-    it("should return undefined botUserId when not provided", () => {
+    it("should return undefined botUserId when not provided", async () => {
       expect(adapter.botUserId).toBeUndefined();
     });
   });
 
   describe("octokit getter", () => {
-    it("should return the underlying Octokit instance in PAT mode", () => {
+    it("should return the underlying Octokit instance in PAT mode", async () => {
       const a = new GitHubAdapter({
         token: "ghp_abc",
         webhookSecret: "secret",
@@ -327,7 +328,7 @@ describe("GitHubAdapter", () => {
       expect(octokit.pulls).toBeDefined();
     });
 
-    it("should return the same instance across calls in single-tenant mode", () => {
+    it("should return the same instance across calls in single-tenant mode", async () => {
       const a = new GitHubAdapter({
         token: "ghp_abc",
         webhookSecret: "secret",
@@ -338,7 +339,7 @@ describe("GitHubAdapter", () => {
       expect(a.octokit).toBe(a.octokit);
     });
 
-    it("should expose the same instance via the deprecated `client` alias", () => {
+    it("should expose the same instance via the deprecated `client` alias", async () => {
       const a = new GitHubAdapter({
         token: "ghp_abc",
         webhookSecret: "secret",
@@ -349,7 +350,7 @@ describe("GitHubAdapter", () => {
       expect(a.client).toBe(a.octokit);
     });
 
-    it("should throw in multi-tenant mode when called outside a webhook", () => {
+    it("should throw in multi-tenant mode when called outside a webhook", async () => {
       const a = new GitHubAdapter({
         appId: "12345",
         privateKey:
@@ -363,7 +364,7 @@ describe("GitHubAdapter", () => {
       expect(() => a.client).toThrow(INSTALLATION_ERROR_PATTERN);
     });
 
-    it("should resolve the per-installation Octokit when accessed inside a webhook context", () => {
+    it("should resolve the per-installation Octokit when accessed inside a webhook context", async () => {
       const a = new GitHubAdapter({
         appId: "12345",
         privateKey:
@@ -777,7 +778,7 @@ describe("GitHubAdapter", () => {
       "abc",
       "-1",
       "111.5",
-    ])("throws a ValidationError for an invalid installationId %s", (installationId) => {
+    ])("throws a ValidationError for an invalid installationId %s", async (installationId) => {
       expect(
         () =>
           new GitHubAdapter({
@@ -1856,7 +1857,7 @@ describe("GitHubAdapter", () => {
   });
 
   describe("parseMessage", () => {
-    it("should parse an issue_comment raw message", () => {
+    it("should parse an issue_comment raw message", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -1876,7 +1877,7 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.id).toBe("100");
       expect(message.threadId).toBe("github:acme/app:42");
       expect(message.text).toBe("Test comment");
@@ -1884,7 +1885,7 @@ describe("GitHubAdapter", () => {
       expect(message.author.isBot).toBe(false);
     });
 
-    it("should preserve whitespace in newline-separated issue comment mentions", () => {
+    it("should preserve whitespace in newline-separated issue comment mentions", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -1904,12 +1905,12 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.text).toMatch(TEST_BOT_MENTION_WITH_WHITESPACE_REGEX);
       expect(message.text).not.toContain("@test-bothi there");
     });
 
-    it("should parse an issue_comment raw message from an issue thread", () => {
+    it("should parse an issue_comment raw message from an issue thread", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -1930,7 +1931,7 @@ describe("GitHubAdapter", () => {
         threadType: "issue" as const,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.id).toBe("100");
       expect(message.threadId).toBe("github:acme/app:issue:10");
       expect(message.text).toBe("Issue comment");
@@ -1940,7 +1941,7 @@ describe("GitHubAdapter", () => {
       }
     });
 
-    it("should default to PR thread format when threadType is omitted", () => {
+    it("should default to PR thread format when threadType is omitted", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -1961,11 +1962,11 @@ describe("GitHubAdapter", () => {
         // threadType omitted — should default to PR format
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.threadId).toBe("github:acme/app:42");
     });
 
-    it("should parse a review_comment raw message (root comment)", () => {
+    it("should parse a review_comment raw message (root comment)", async () => {
       const raw = {
         type: "review_comment" as const,
         comment: {
@@ -1989,13 +1990,13 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.id).toBe("200");
       // Root comment -> reviewCommentId = comment.id
       expect(message.threadId).toBe("github:acme/app:42:rc:200");
     });
 
-    it("should preserve whitespace in newline-separated review comment mentions", () => {
+    it("should preserve whitespace in newline-separated review comment mentions", async () => {
       const raw = {
         type: "review_comment" as const,
         comment: {
@@ -2019,12 +2020,12 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.text).toMatch(TEST_BOT_MENTION_WITH_WHITESPACE_REGEX);
       expect(message.text).not.toContain("@test-bothi there");
     });
 
-    it("should parse a review_comment raw message (reply)", () => {
+    it("should parse a review_comment raw message (reply)", async () => {
       const raw = {
         type: "review_comment" as const,
         comment: {
@@ -2049,13 +2050,13 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.id).toBe("300");
       // Reply -> uses in_reply_to_id as root
       expect(message.threadId).toBe("github:acme/app:42:rc:200");
     });
 
-    it("should mark edited messages", () => {
+    it("should mark edited messages", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -2075,14 +2076,14 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.metadata.edited).toBe(true);
       expect(message.metadata.editedAt).toEqual(
         new Date("2024-01-02T00:00:00Z")
       );
     });
 
-    it("should not mark unedited messages as edited", () => {
+    it("should not mark unedited messages as edited", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -2102,7 +2103,7 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.metadata.edited).toBe(false);
       expect(message.metadata.editedAt).toBeUndefined();
     });
@@ -2168,28 +2169,21 @@ describe("GitHubAdapter", () => {
     it.each([
       ["issue comment", issueComment],
       ["review comment", reviewComment],
-    ])("parses %s markdown once into text and formatted", (_, build) => {
-      const message = adapter.parseMessage(build(MARKDOWN_BODY));
+    ])("parses %s markdown once into text and formatted", async (_, build) => {
+      const message = await adapter.parseMessage(build(MARKDOWN_BODY));
 
       expect(message.text).toBe(MARKDOWN_PLAIN_TEXT);
-      expect(message.formatted).toMatchObject({
-        children: [
-          {
-            type: "paragraph",
-            children: expect.arrayContaining([
-              expect.objectContaining({ type: "strong" }),
-            ]),
-          },
-        ],
-      });
+      expect(message.formatted.nodes).toEqual([
+        expect.arrayContaining(["p", ["strong", {}, "bold"]]),
+      ]);
       expect(toAstSpy).toHaveBeenCalledOnce();
     });
 
     it.each([
       ["issue comment", issueComment],
       ["review comment", reviewComment],
-    ])("keeps an over-limit %s verbatim without parsing", (_, build) => {
-      const message = adapter.parseMessage(build(OVER_LIMIT_BODY));
+    ])("keeps an over-limit %s verbatim without parsing", async (_, build) => {
+      const message = await adapter.parseMessage(build(OVER_LIMIT_BODY));
 
       expect(message.text).toBe(OVER_LIMIT_BODY);
       expect(message.formatted).toEqual(
@@ -2237,11 +2231,21 @@ describe("GitHubAdapter", () => {
       const message = await dispatchComment(eventType, MARKDOWN_BODY);
 
       expect(message.text).toBe(MARKDOWN_PLAIN_TEXT);
-      expect(message.formatted).toEqual(parseMarkdown(MARKDOWN_BODY));
+      expect(message.formatted).toEqual(await parseMarkdown(MARKDOWN_BODY));
     });
 
-    const verbatimBodies = [
-      ["a maximum-length (65,536-character) body", "`x` ".repeat(16_384)],
+    it.each([
+      "issue_comment",
+      "pull_request_review_comment",
+    ] as const)("keeps %s webhooks with a maximum-length (65,536-character) body verbatim", async (eventType) => {
+      const body = "`x` ".repeat(16_384);
+      const message = await dispatchComment(eventType, body);
+
+      expect(message.text).toBe(body);
+      expect(message.formatted).toEqual(root([paragraph([text(body)])]));
+    });
+
+    const pathologicalBodies = [
       ["a 16,384-character emphasis run", "*a".repeat(8192)],
       ["6,000 nested blockquotes", ">".repeat(6000)],
       ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
@@ -2251,22 +2255,20 @@ describe("GitHubAdapter", () => {
     it.each(
       (["issue_comment", "pull_request_review_comment"] as const).flatMap(
         (eventType) =>
-          verbatimBodies.map(
+          pathologicalBodies.map(
             ([label, body]) => [eventType, label, body] as const
           )
       )
-    )("keeps %s webhooks with %s verbatim", async (eventType, _, body) => {
+    )("keeps %s webhooks with %s serializable", async (eventType, _, body) => {
       const message = await dispatchComment(eventType, body);
 
-      expect(message.text).toBe(body);
-      expect(message.formatted).toEqual(root([paragraph([text(body)])]));
       expect(() => JSON.stringify(message.formatted)).not.toThrow();
       expect(() => JSON.stringify(message.toJSON())).not.toThrow();
     });
   });
 
   describe("parseAuthor (via parseMessage)", () => {
-    it("should identify bot users", () => {
+    it("should identify bot users", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -2286,13 +2288,13 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.author.isBot).toBe(true);
       expect(message.author.userName).toBe("dependabot[bot]");
       expect(message.author.userId).toBe("50");
     });
 
-    it("should detect isMe when botUserId matches", () => {
+    it("should detect isMe when botUserId matches", async () => {
       const a = new GitHubAdapter({
         token: "test-token",
         webhookSecret: WEBHOOK_SECRET,
@@ -2320,11 +2322,11 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = a.parseMessage(raw);
+      const message = await a.parseMessage(raw);
       expect(message.author.isMe).toBe(true);
     });
 
-    it("should set isMe to false when user is not the bot", () => {
+    it("should set isMe to false when user is not the bot", async () => {
       const raw = {
         type: "issue_comment" as const,
         comment: {
@@ -2344,7 +2346,7 @@ describe("GitHubAdapter", () => {
         prNumber: 42,
       };
 
-      const message = adapter.parseMessage(raw);
+      const message = await adapter.parseMessage(raw);
       expect(message.author.isMe).toBe(false);
     });
   });
@@ -2707,7 +2709,7 @@ describe("GitHubAdapter", () => {
 
       expect(rootMessage.text).toBe("Fix `parser` for **bold** input");
       expect(rootMessage.formatted).toEqual(
-        parseMarkdown("Fix `parser` for **bold** input")
+        await parseMarkdown("Fix `parser` for **bold** input")
       );
     });
 
@@ -2716,14 +2718,13 @@ describe("GitHubAdapter", () => {
       ["6,000 nested blockquotes", ">".repeat(6000)],
       ["a footnote opening 40 nested lists", `[^a]: ${"- ".repeat(40)}a`],
       ["65 www. autolinks in one word", "www.example.com/".repeat(65)],
-    ])("keeps a PR title with %s verbatim", async (_, title) => {
+    ])("keeps a PR title with %s serializable", async (_, title) => {
       mockPullsList.mockResolvedValueOnce({ data: [pullWithTitle(title)] });
 
       const result = await adapter.listThreads("github:acme/app");
       const { rootMessage } = result.threads[0];
 
       expect(rootMessage.text).toBe(title);
-      expect(rootMessage.formatted).toEqual(root([paragraph([text(title)])]));
       expect(() => JSON.stringify(rootMessage.formatted)).not.toThrow();
     });
   });
@@ -2767,12 +2768,12 @@ describe("GitHubAdapter", () => {
   });
 
   describe("channelIdFromThreadId", () => {
-    it("should derive channel ID from PR-level thread", () => {
+    it("should derive channel ID from PR-level thread", async () => {
       const result = adapter.channelIdFromThreadId("github:acme/app:42");
       expect(result).toBe("github:acme/app");
     });
 
-    it("should derive channel ID from review comment thread", () => {
+    it("should derive channel ID from review comment thread", async () => {
       const result = adapter.channelIdFromThreadId("github:acme/app:42:rc:200");
       expect(result).toBe("github:acme/app");
     });
@@ -2790,7 +2791,7 @@ describe("GitHubAdapter", () => {
     // Round-trip + pinned-encoding coverage lives in the shared
     // `threadIdContract` at the bottom of this file; only the encode-specific
     // validation that the contract does not cover is kept here.
-    it("should throw for issue thread with reviewCommentId", () => {
+    it("should throw for issue thread with reviewCommentId", async () => {
       expect(() =>
         adapter.encodeThreadId({
           owner: "acme",
@@ -2807,13 +2808,13 @@ describe("GitHubAdapter", () => {
     // PR/issue/review-comment decode + round-trip coverage lives in the shared
     // `threadIdContract` at the bottom of this file; only the malformed-id and
     // invalid-prefix errors the contract does not cover are kept here.
-    it("should throw for invalid thread ID prefix", () => {
+    it("should throw for invalid thread ID prefix", async () => {
       expect(() => adapter.decodeThreadId("slack:C123:ts")).toThrow(
         "Invalid GitHub thread ID"
       );
     });
 
-    it("should throw for malformed thread ID", () => {
+    it("should throw for malformed thread ID", async () => {
       expect(() => adapter.decodeThreadId("github:invalid")).toThrow(
         "Invalid GitHub thread ID format"
       );
@@ -2821,36 +2822,15 @@ describe("GitHubAdapter", () => {
   });
 
   describe("renderFormatted", () => {
-    it("should render simple markdown", () => {
-      const ast = {
-        type: "root" as const,
-        children: [
-          {
-            type: "paragraph" as const,
-            children: [{ type: "text" as const, value: "Hello world" }],
-          },
-        ],
-      };
-      const result = adapter.renderFormatted(ast);
+    it("should render simple markdown", async () => {
+      const ast = root([paragraph([text("Hello world")])]);
+      const result = await adapter.renderFormatted(ast);
       expect(result).toBe("Hello world");
     });
 
-    it("should render bold text", () => {
-      const ast = {
-        type: "root" as const,
-        children: [
-          {
-            type: "paragraph" as const,
-            children: [
-              {
-                type: "strong" as const,
-                children: [{ type: "text" as const, value: "bold" }],
-              },
-            ],
-          },
-        ],
-      };
-      const result = adapter.renderFormatted(ast);
+    it("should render bold text", async () => {
+      const ast = root([paragraph([strong([text("bold")])])]);
+      const result = await adapter.renderFormatted(ast);
       expect(result).toBe("**bold**");
     });
   });
@@ -2956,7 +2936,7 @@ describe("GitHubAdapter - Vercel Connect mode", () => {
     vi.clearAllMocks();
   });
 
-  it("constructs with installationToken + webhookVerifier (no secret)", () => {
+  it("constructs with installationToken + webhookVerifier (no secret)", async () => {
     const adapter = new GitHubAdapter({
       installationToken: "ghs_connect_token",
       webhookVerifier: () => true,
@@ -3013,7 +2993,7 @@ describe("GitHubAdapter - Vercel Connect mode", () => {
     expect(opts.headers.authorization).toBe("token ghs_static");
   });
 
-  it("rejects mixing Connect installationToken with App auth at the type level", () => {
+  it("rejects mixing Connect installationToken with App auth at the type level", async () => {
     const adapter = new GitHubAdapter({
       installationToken: "t",
       webhookVerifier: () => true,
@@ -3052,7 +3032,7 @@ describe("GitHubAdapter - Vercel Connect mode", () => {
     );
   });
 
-  it("rejects mixing Connect installationToken with a webhookSecret at the type level", () => {
+  it("rejects mixing Connect installationToken with a webhookSecret at the type level", async () => {
     const adapter = new GitHubAdapter({
       installationToken: "t",
       webhookVerifier: () => true,
@@ -3115,7 +3095,7 @@ describe("createGitHubAdapter", () => {
     process.env = originalEnv;
   });
 
-  it("should create adapter with explicit PAT config", () => {
+  it("should create adapter with explicit PAT config", async () => {
     const a = createGitHubAdapter({
       token: "ghp_test",
       webhookSecret: "secret",
@@ -3125,7 +3105,7 @@ describe("createGitHubAdapter", () => {
     expect(a.userName).toBe("bot");
   });
 
-  it("auto-detects botUserId from the GITHUB_BOT_USER_ID env var", () => {
+  it("auto-detects botUserId from the GITHUB_BOT_USER_ID env var", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
     process.env.GITHUB_TOKEN = "env-token";
     process.env.GITHUB_BOT_USER_ID = "4242";
@@ -3133,7 +3113,7 @@ describe("createGitHubAdapter", () => {
     expect(a.botUserId).toBe("4242");
   });
 
-  it("prefers an explicit botUserId over GITHUB_BOT_USER_ID", () => {
+  it("prefers an explicit botUserId over GITHUB_BOT_USER_ID", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
     process.env.GITHUB_TOKEN = "env-token";
     process.env.GITHUB_BOT_USER_ID = "4242";
@@ -3141,7 +3121,7 @@ describe("createGitHubAdapter", () => {
     expect(a.botUserId).toBe("99");
   });
 
-  it("should create adapter with explicit app config (single-tenant)", () => {
+  it("should create adapter with explicit app config (single-tenant)", async () => {
     const a = createGitHubAdapter({
       appId: "123",
       privateKey:
@@ -3154,7 +3134,7 @@ describe("createGitHubAdapter", () => {
     expect(a.isMultiTenant).toBe(false);
   });
 
-  it("should create adapter in multi-tenant mode (no installationId)", () => {
+  it("should create adapter in multi-tenant mode (no installationId)", async () => {
     const a = createGitHubAdapter({
       appId: "123",
       privateKey:
@@ -3166,19 +3146,19 @@ describe("createGitHubAdapter", () => {
     expect(a.isMultiTenant).toBe(true);
   });
 
-  it("should throw when webhookSecret is missing", () => {
+  it("should throw when webhookSecret is missing", async () => {
     expect(() => createGitHubAdapter({ token: "ghp_test" })).toThrow(
       "webhookSecret or webhookVerifier is required"
     );
   });
 
-  it("should throw when no auth is provided", () => {
+  it("should throw when no auth is provided", async () => {
     expect(() => createGitHubAdapter({ webhookSecret: "secret" })).toThrow(
       "Authentication is required"
     );
   });
 
-  it("should fall back to env vars for token", () => {
+  it("should fall back to env vars for token", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
     process.env.GITHUB_TOKEN = "env-token";
     process.env.GITHUB_BOT_USERNAME = "env-bot";
@@ -3188,7 +3168,7 @@ describe("createGitHubAdapter", () => {
     expect(a.userName).toBe("env-bot");
   });
 
-  it("should fall back to env vars for app credentials", () => {
+  it("should fall back to env vars for app credentials", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
     process.env.GITHUB_APP_ID = "env-app-id";
     process.env.GITHUB_PRIVATE_KEY =
@@ -3200,7 +3180,7 @@ describe("createGitHubAdapter", () => {
     expect(a.isMultiTenant).toBe(false);
   });
 
-  it("should not mix auth modes when explicit config has auth fields", () => {
+  it("should not mix auth modes when explicit config has auth fields", async () => {
     process.env.GITHUB_TOKEN = "env-token";
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
 
@@ -3213,7 +3193,7 @@ describe("createGitHubAdapter", () => {
     ).toThrow("Authentication is required");
   });
 
-  it("should use default userName when not provided", () => {
+  it("should use default userName when not provided", async () => {
     const a = createGitHubAdapter({
       token: "ghp_test",
       webhookSecret: "secret",
@@ -3221,7 +3201,7 @@ describe("createGitHubAdapter", () => {
     expect(a.userName).toBe("github-bot");
   });
 
-  it("should pass botUserId to adapter", () => {
+  it("should pass botUserId to adapter", async () => {
     const a = createGitHubAdapter({
       token: "ghp_test",
       webhookSecret: "secret",
@@ -3230,7 +3210,7 @@ describe("createGitHubAdapter", () => {
     expect(a.botUserId).toBe("42");
   });
 
-  it("should accept apiUrl config for GitHub Enterprise", () => {
+  it("should accept apiUrl config for GitHub Enterprise", async () => {
     const a = createGitHubAdapter({
       token: "ghp_test",
       webhookSecret: "secret",
@@ -3242,7 +3222,7 @@ describe("createGitHubAdapter", () => {
     );
   });
 
-  it("should resolve apiUrl from GITHUB_API_URL env var", () => {
+  it("should resolve apiUrl from GITHUB_API_URL env var", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
     process.env.GITHUB_TOKEN = "env-token";
     process.env.GITHUB_API_URL = "https://github.example.com/api/v3";
@@ -3253,7 +3233,7 @@ describe("createGitHubAdapter", () => {
     );
   });
 
-  it("should prefer apiUrl config over GITHUB_API_URL env var", () => {
+  it("should prefer apiUrl config over GITHUB_API_URL env var", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "env-secret";
     process.env.GITHUB_TOKEN = "env-token";
     process.env.GITHUB_API_URL = "https://env-github.example.com/api/v3";

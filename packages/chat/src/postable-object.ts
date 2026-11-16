@@ -44,6 +44,9 @@ export interface PostableObject<TData = unknown> {
 
   /** Called after successful posting to bind the object to the thread */
   onPosted(context: PostableObjectContext): void;
+
+  /** Called before posting, to finish any async setup such as parsing markdown */
+  prepare?(): Promise<void>;
 }
 
 /**
@@ -70,6 +73,7 @@ export async function postPostableObject(
   ) => Promise<{ id: string; threadId?: string }>,
   logger?: Logger
 ): Promise<void> {
+  await obj.prepare?.();
   const context = (raw: { id: string; threadId?: string }) => ({
     adapter,
     logger,
