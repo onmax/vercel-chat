@@ -112,6 +112,15 @@ describe("parseMarkdown", () => {
     );
   });
 
+  it("links www. addresses as GFM does, and leaves bare domains as text", async () => {
+    const ast = await parseMarkdown("see www.example.com or example.com");
+    const [, linkNode, rest] = getNodeChildren(ast.nodes[0]);
+    expect(isLinkNode(linkNode) && linkNode[1].href).toBe(
+      "http://www.example.com"
+    );
+    expect(rest).toBe(" or example.com");
+  });
+
   it("parses blockquotes", async () => {
     const ast = await parseMarkdown("> quoted text");
     expect(getNodeTag(ast.nodes[0])).toBe("blockquote");

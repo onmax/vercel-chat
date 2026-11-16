@@ -10,8 +10,8 @@ import type {
   RenderMarkdownOptions,
 } from "comark";
 import { createMarkdownParser } from "comark/core";
-import linkify from "comark/plugins/linkify";
 import { renderMarkdown } from "comark/render";
+import { linkifyGfm } from "tinylinkify/gfm";
 import type { CardChild, CardElement, ChartElement } from "./cards";
 import type { AdapterPostableMessage } from "./types";
 
@@ -244,11 +244,12 @@ function exceedsDepth(ast: Root, max: number): boolean {
 
 // Comark's own syntax (components, attributes, raw HTML) is off, so `{x}` and
 // `::x` in a chat message stay text. Incoming text is complete, so nothing is
-// auto-closed, and list items keep their paragraphs, as in CommonMark.
+// auto-closed, and list items keep their paragraphs, as in CommonMark. Links
+// in text follow GFM's rules, `www.` included, as remark-gfm's did.
 const parser = createMarkdownParser({
   autoUnwrap: false,
   headingIds: false,
-  plugins: [linkify()],
+  plugins: [{ name: "linkify", markdownItPlugins: [linkifyGfm] }],
 });
 
 /**

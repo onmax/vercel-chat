@@ -59,7 +59,8 @@
   "dependencies": {
     "@chat-adapter/catalog": "workspace:*",
     "@workflow/serde": "4.1.0-beta.2",
-    "comark": "https://pkg.pr.new/comark@237f314"
+    "comark": "https://pkg.pr.new/comark@237f314",
+    "tinylinkify": "https://pkg.pr.new/onmax/tiny/tinylinkify@6ad3f67"
   },
   "devDependencies": {
     "@tanstack/ai": "0.54.0",

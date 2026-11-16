@@ -998,6 +998,9 @@ importers:
       comark:
         specifier: https://pkg.pr.new/comark@237f314
         version: https://pkg.pr.new/comark@237f314
+      tinylinkify:
+        specifier: https://pkg.pr.new/onmax/tiny/tinylinkify@6ad3f67
+        version: https://pkg.pr.new/onmax/tiny/tinylinkify@6ad3f67
     devDependencies:
       '@tanstack/ai':
         specifier: 0.54.0
@@ -8202,7 +8205,7 @@ packages:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
   comark@https://pkg.pr.new/comark@237f314:
-    resolution: {integrity: sha512-HB5hSE5SMpTYrdP0Q2F6rxBn0ODO6o17EmhmwPK3Pe9elxRm6X6GJNDuiy+rVzOUGgt9LJyIien90OWWaI1h8A==, tarball: https://pkg.pr.new/comark@237f314}
+    resolution: {tarball: https://pkg.pr.new/comark@237f314}
     version: 0.9.0
     peerDependencies:
       beautiful-mermaid: ^1.1.3
@@ -12464,6 +12467,11 @@ packages:
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
+
+  tinylinkify@https://pkg.pr.new/onmax/tiny/tinylinkify@6ad3f67:
+    resolution: {integrity: sha512-L9cFOLyMNGUjGwOTmwtjHIJf5ga2qxYSok0TeSQ9Nbe3U+aon81aVa2oU9BuvMsrez+7YZeERtkxFV07pZKDsQ==, tarball: https://pkg.pr.new/onmax/tiny/tinylinkify@6ad3f67}
+    version: 0.1.2
+    engines: {node: '>=22.12.0'}
 
   tinyrainbow@3.2.0:
     resolution: {integrity: sha512-LgO3D9yZJjApUiuUfl9iFAwrtaX4+lok3wJIqttGoKCHlWUqHqbQpnxCf82L8FjgKsh4iGo78hqJwgL8F6To2A==}
@@ -26382,6 +26390,8 @@ snapshots:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.7)
       picomatch: 4.0.7
+
+  tinylinkify@https://pkg.pr.new/onmax/tiny/tinylinkify@6ad3f67: {}
 
   tinyrainbow@3.2.0: {}
 
