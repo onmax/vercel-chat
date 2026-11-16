@@ -8205,7 +8205,7 @@ packages:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
 
   comark@https://pkg.pr.new/comark@237f314:
-    resolution: {tarball: https://pkg.pr.new/comark@237f314}
+    resolution: {integrity: sha512-HB5hSE5SMpTYrdP0Q2F6rxBn0ODO6o17EmhmwPK3Pe9elxRm6X6GJNDuiy+rVzOUGgt9LJyIien90OWWaI1h8A==, tarball: https://pkg.pr.new/comark@237f314}
     version: 0.9.0
     peerDependencies:
       beautiful-mermaid: ^1.1.3

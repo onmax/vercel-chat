@@ -244,8 +244,8 @@ function exceedsDepth(ast: Root, max: number): boolean {
 
 // Comark's own syntax (components, attributes, raw HTML) is off, so `{x}` and
 // `::x` in a chat message stay text. Incoming text is complete, so nothing is
-// auto-closed, and list items keep their paragraphs, as in CommonMark. Links
-// in text follow GFM's rules, `www.` included, as remark-gfm's did.
+// auto-closed, and list items keep their paragraphs, as in CommonMark. Bare
+// `www.` addresses link, as they did with remark-gfm.
 const parser = createMarkdownParser({
   autoUnwrap: false,
   headingIds: false,
