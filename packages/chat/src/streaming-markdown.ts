@@ -1,9 +1,9 @@
-import { autoCloseMarkdown } from "comark/auto-close";
+import { autoCloseMarkdown } from "comark/auto-close/core";
 
 // The renderer holds back table headers itself, so only inline markers and
 // links are closed.
 const remend = (markdown: string): string =>
-  autoCloseMarkdown(markdown, { tables: false });
+  autoCloseMarkdown(markdown);
 
 interface StreamingMarkdownRendererOptions {
   /**
